@@ -1,0 +1,14 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"paths": {
+			"@earendil-works/pi-ai": ["../ai/dist/index.d.ts"],
+			"@earendil-works/pi-ai/*": ["../ai/dist/*.d.ts", "../ai/dist/providers/*.d.ts"],
+			"@earendil-works/pi-agent-core": ["../agent/dist/index.d.ts"],
+			"@earendil-works/pi-session-backend-sqlite-node": ["../session-backends/sqlite-node/dist/index.d.ts"]
+		}
+	},
+	"include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"],
+	"exclude": ["node_modules", "dist", "**/*.d.ts"]
+}
