@@ -819,7 +819,7 @@ async function uploadBatch(){
 }
 function renderUploaded(){
   const g=$("#thumb-grid"); g.innerHTML="";
-  for(const it of chat.uploaded) g.insertAdjacentHTML("beforeend",`<img class="thumb" src="/uploads/${it.uri.split("/").pop()}"/>`);
+  for(const it of chat.uploaded) g.insertAdjacentHTML("beforeend",`<img class="thumb" src="${imgSrc(it.uri)}"/>`);
 }
 function showConfirm(){
   const ar=$("#studio-actions");
@@ -920,7 +920,7 @@ async function loadGallery(){
     g.innerHTML="";
     for(const it of (m.materials||[])){
       const badge=(it.status && it.status!=="confirmed")?`<span class="ag-badge">待确认</span>`:"";
-      g.insertAdjacentHTML("beforeend",`<div class="ag-item">${badge}<img class="ag-thumb" src="/uploads/${it.uri.split("/").pop()}"/></div>`);
+      g.insertAdjacentHTML("beforeend",`<div class="ag-item">${badge}<img class="ag-thumb" src="${imgSrc(it.uri)}"/></div>`);
     }
     if(!(m.materials||[]).length) g.innerHTML=`<div class="ag-empty">还没有上传素材</div>`;
   }catch(e){ g.innerHTML=`<div class="ag-empty">素材加载失败</div>`; }
