@@ -180,4 +180,16 @@ CREATE TABLE IF NOT EXISTS invite_codes (
   created_at   BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_invite_codes_batch ON invite_codes(batch_id);
+
+-- 统一图片资产表（uploads 落盘的每张图登记来源/用途/引用，孤儿可清理；kind=ingest/cover/generated）
+CREATE TABLE IF NOT EXISTS image_assets (
+  id          TEXT PRIMARY KEY,
+  uri         TEXT NOT NULL,
+  kind        TEXT NOT NULL,
+  source_uri  TEXT,
+  ref_id      TEXT,
+  created_at  BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_image_assets_kind ON image_assets(kind);
+CREATE INDEX IF NOT EXISTS idx_image_assets_ref ON image_assets(ref_id);
 `;

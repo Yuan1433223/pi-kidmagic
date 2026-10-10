@@ -26,13 +26,13 @@ function extForMime(mime: string): string {
 }
 
 /**
- * 下载远程图片到 uploads/<YYYY-MM-DD>/ 子目录，返回相对 uri `uploads/<date>/<file>`。
- * 图生图结果按天归档，避免大量自动生成页图在 uploads 根目录平铺成一片。
+ * 下载远程图片到 uploads/gen/<YYYY-MM-DD>/ 子目录，返回相对 uri `uploads/gen/<date>/<file>`。
+ * 图生图结果按用途+日期归档，避免大量自动生成页图在 uploads 根目录平铺成一片。
  * 由 server `GET /uploads/<date>/<file>` 永久提供（Cache-Control immutable）。
  */
 export async function saveRemoteImage(url: string): Promise<string> {
 	const day = todayStr();
-	const dir = join(UPLOAD_DIR, day);
+	const dir = join(UPLOAD_DIR, "gen", day);
 	mkdirSync(dir, { recursive: true });
 	const resp = await fetch(url);
 	if (!resp.ok) throw new Error(`下载图片失败 HTTP ${resp.status}`);
@@ -42,5 +42,5 @@ export async function saveRemoteImage(url: string): Promise<string> {
 	const mime = fromHeader || (fromExt === "png" || fromExt === "webp" || fromExt === "gif" ? "image/" + fromExt : "image/jpeg");
 	const file = `${uuidv7()}${extForMime(mime)}`;
 	writeFileSync(join(dir, file), buf);
-	return `uploads/${day}/${file}`;
+	return `uploads/gen/${day}/${file}`;
 }

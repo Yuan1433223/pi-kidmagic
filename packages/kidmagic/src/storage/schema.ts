@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS chapters (
   book_id       TEXT NOT NULL,
   chapter_no    INTEGER NOT NULL DEFAULT 1,
   title         TEXT NOT NULL DEFAULT '',
+  cover_asset_id TEXT,                     -- 章节封面（默认该章第一页图，可上传替换）
   recap_summary TEXT NOT NULL DEFAULT '',  -- 前情提要摘要（P1 续写注入）
   status        TEXT NOT NULL DEFAULT 'draft',
   created_at    INTEGER NOT NULL
@@ -155,4 +156,16 @@ CREATE TABLE IF NOT EXISTS children (
 );
 
 CREATE INDEX IF NOT EXISTS idx_children_user ON children(user_id);
+
+-- 统一图片资产表（uploads 落盘的每张图登记来源/用途/引用，孤儿可清理；kind=ingest/cover/generated）
+CREATE TABLE IF NOT EXISTS image_assets (
+  id          TEXT PRIMARY KEY,
+  uri         TEXT NOT NULL,
+  kind        TEXT NOT NULL,
+  source_uri  TEXT,
+  ref_id      TEXT,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_image_assets_kind ON image_assets(kind);
+CREATE INDEX IF NOT EXISTS idx_image_assets_ref ON image_assets(ref_id);
 `;

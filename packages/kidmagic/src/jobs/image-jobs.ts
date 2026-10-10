@@ -15,6 +15,7 @@ import {
 	listChapterPagesWithImages,
 	markBookDone,
 	updateBookPageGeneratedImage,
+	registerImageAsset,
 } from "../storage/repo.ts";
 import { buildPageImagePrompt, type WorldCards } from "../agent/image-prompt.ts";
 import { validateChapterPage, validateWorldCards } from "../agent/consistency.ts";
@@ -131,8 +132,10 @@ export async function generateChapterImages(
 						{ prompt, ...(useRef ? { referenceImageDataUri: useRef } : {}) },
 						imgCfg,
 					);
-					// 外链会过期，下载落盘到 uploads 持久保存（回看绘本不再丢图）
-					await updateBookPageGeneratedImage(db, pg.id, await saveRemoteImage(url));
+					// 外链会过期，下载落盘到 uploads 持久保存（回看绘本不再丢图）；并统一登记图片资产
+					const genUri = await saveRemoteImage(url);
+					await updateBookPageGeneratedImage(db, pg.id, genUri);
+					await registerImageAsset(db, { uri: genUri, kind: "generated", refId: pg.id });
 					ok = true;
 					done += 1;
 				} catch (err) {

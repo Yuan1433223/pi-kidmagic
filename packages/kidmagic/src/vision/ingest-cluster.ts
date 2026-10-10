@@ -6,7 +6,7 @@
  * → 每张图写 assets，每个实体写/合并 asset_clusters（confirmed=0，前端确认点按）。
  */
 import { readFileSync, existsSync } from "node:fs";
-import { join, basename } from "node:path";
+import { join } from "node:path";
 import type { Db } from "../storage/db-pg.ts";
 import { insertAsset, upsertCluster, findCluster, appendClusterAssets, listIngestItemsByBatch } from "../storage/repo.ts";
 import { visualUnderstand, type VisualEntity } from "./visual-understand.ts";
@@ -25,11 +25,11 @@ function uploadsDir(): string {
 	return process.env.KIDMAGIC_UPLOADS ?? join(process.cwd(), "uploads");
 }
 
-/** 读批次确认图片为 base64（读不到文件的跳过） */
+/** 读批次确认图片为 base64（按相对 uri 解析到本地文件；读不到文件的跳过） */
 function readBatchImages(items: { uri: string; mime_type: string }[]): { mimeType: string; base64: string }[] {
 	const images: { mimeType: string; base64: string }[] = [];
 	for (const it of items) {
-		const p = join(uploadsDir(), basename(it.uri));
+		const p = join(uploadsDir(), it.uri.replace(/^uploads\//, ""));
 		if (!existsSync(p)) continue;
 		const buf = readFileSync(p);
 		images.push({ mimeType: it.mime_type, base64: buf.toString("base64") });

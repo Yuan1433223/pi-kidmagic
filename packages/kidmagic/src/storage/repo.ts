@@ -483,6 +483,34 @@ export async function deleteChapter(db: Db, chapterId: string): Promise<void> {
 	});
 }
 
+export interface ImageAssetRow {
+	id: string;
+	uri: string;
+	kind: string;
+	source_uri: string | null;
+	ref_id: string | null;
+	created_at: number;
+}
+
+/** 统一登记一张已落盘的图片（uploads 资产表：来源/用途/引用可查、孤儿可清理） */
+export async function registerImageAsset(
+	db: Db,
+	p: { uri: string; kind: string; sourceUri?: string; refId?: string },
+): Promise<void> {
+	await db.query(
+		"INSERT INTO image_assets (id, uri, kind, source_uri, ref_id, created_at) VALUES ($1,$2,$3,$4,$5,$6)",
+		[uuidv7(), p.uri, p.kind, p.sourceUri ?? null, p.refId ?? null, Date.now()],
+	);
+}
+
+/** 按业务引用删除登记并返回其 uri（封面替换时先清旧登记再删旧文件） */
+export async function deleteImageAssetsByRef(db: Db, refId: string): Promise<string[]> {
+	const rows = (await db.query("DELETE FROM image_assets WHERE ref_id = $1 RETURNING uri", [refId])) as unknown as {
+		uri: string;
+	}[];
+	return rows.map((r) => r.uri);
+}
+
 export async function listPages(db: Db, chapterId: string): Promise<BookPageRow[]> {
 	return (await db.query(
 		"SELECT id, chapter_id, page_no, text, text_source FROM book_pages WHERE chapter_id = $1 ORDER BY page_no",

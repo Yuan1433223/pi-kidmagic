@@ -14,7 +14,7 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
-import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, unlinkSync } from "node:fs";
 import { join, basename, resolve, sep } from "node:path";
 import { uuidv7 } from "@earendil-works/pi-agent-core";
 import { createModels, type AssistantMessage } from "@earendil-works/pi-ai";
@@ -38,6 +38,8 @@ import {
 	updateChapterTitle,
 	updateChapterCover,
 	deleteChapter,
+	registerImageAsset,
+	deleteImageAssetsByRef,
 	nextIngestBatchNo,
 	insertIngestItem,
 	confirmIngestBatch,
@@ -137,12 +139,21 @@ function decodeBase64Image(base64: string, mimeType: string): { mimeType: string
 	return { mimeType, buf };
 }
 
-/** 写一张图到 uploads 目录，返回相对 uri */
-function writeImage(mimeType: string, buf: Buffer): string {
-	mkdirSync(UPLOAD_DIR, { recursive: true });
+/** 写图到 uploads/<kind>/<file>（按用途分层：ingest/cover；读取端用相对 uri 解析，目录结构对前端透明） */
+function writeKindImage(mimeType: string, buf: Buffer, kind: string): string {
+	const dir = join(UPLOAD_DIR, kind);
+	mkdirSync(dir, { recursive: true });
 	const file = `${uuidv7()}${extForMime(mimeType)}`;
-	writeFileSync(join(UPLOAD_DIR, file), buf);
-	return `uploads/${file}`;
+	writeFileSync(join(dir, file), buf);
+	return `uploads/${kind}/${file}`;
+}
+
+/** 删除一张已登记的本地图片（相对 uri → 解析到 uploads 内，防穿越；不存在忽略） */
+function deleteImageFile(uri: string): void {
+	if (typeof uri !== "string" || !uri.startsWith("uploads/")) return;
+	const root = resolve(UPLOAD_DIR);
+	const p = resolve(root, uri.replace(/^uploads\//, ""));
+	if (p !== root && p.startsWith(root + sep) && existsSync(p) && statSync(p).isFile()) unlinkSync(p);
 }
 
 /** 装配模型（与 demo 一致的 provider 选择，server 内联避免动 demo） */
@@ -689,7 +700,7 @@ const server = createServer(async (req, res) => {
 			const batchNo = await nextIngestBatchNo(db, book.id);
 			const items: { id: string; uri: string; mimeType: string }[] = [];
 			for (const d of decoded) {
-				const uri = writeImage(d.mimeType, d.buf);
+				const uri = writeKindImage(d.mimeType, d.buf, "ingest");
 				const itemId = await insertIngestItem(db, {
 					sessionId: sess,
 					bookId: book.id,
@@ -697,6 +708,7 @@ const server = createServer(async (req, res) => {
 					mimeType: d.mimeType,
 					uri,
 				});
+				await registerImageAsset(db, { uri, kind: "ingest", refId: itemId });
 				items.push({ id: itemId, uri, mimeType: d.mimeType });
 			}
 			console.log(`[素材] 上传 ${items.length} 张，批次 ${batchNo}（书=${book.id.slice(0, 8)}，会话=${book.session_id.slice(0, 8)}）`);
@@ -757,8 +769,14 @@ const server = createServer(async (req, res) => {
 			let dec: { mimeType: string; buf: Buffer };
 			try { dec = decodeBase64Image(base64, mimeType); }
 			catch (err) { return sendJson(res, 400, { error: err instanceof Error ? err.message : "图片校验失败" }); }
-			const uri = writeImage(dec.mimeType, dec.buf);
+			// 替换封面：先清旧登记并删旧文件，避免每次上传留孤儿图
+			if (chapter.cover_asset_id) {
+				await deleteImageAssetsByRef(db, chapter.id);
+				deleteImageFile(chapter.cover_asset_id);
+			}
+			const uri = writeKindImage(dec.mimeType, dec.buf, "cover");
 			await updateChapterCover(db, chCover[2], uri);
+			await registerImageAsset(db, { uri, kind: "cover", refId: chapter.id });
 			console.log(`[章节] 封面上传 ${chCover[2].slice(0, 8)} → ${uri}`);
 			return sendJson(res, 201, { cover_asset_id: uri });
 		}
