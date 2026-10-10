@@ -711,7 +711,11 @@ async function uploadCover(e){
     try{
       const p=await compress(f);
       const r=await apiFetch(API+`/books/${state.current.bookId}/chapters/${reader.chapter.id}/cover`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mimeType:p.mimeType,base64:p.base64})});
-      if(r.ok){ toast("封面换好啦 ✨"); renderReader(); }
+      if(r.ok){
+        const d=await r.json();
+        if(reader.chapter) reader.chapter.cover_asset_id = d.cover_asset_id || null;
+        toast("封面换好啦 ✨"); renderReader();
+      }
       else toast("封面上传失败");
     }catch(err){ toast("图片处理失败"); }
   };
