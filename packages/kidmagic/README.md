@@ -18,11 +18,13 @@
 - [环境要求](#环境要求)
 - [目录结构](#目录结构)
 - [架构](#架构)
+- [前端：页面流程示意图（用户侧）](#前端页面流程示意图用户侧)
 - [引导状态机](#引导状态机)
 - [Agent 工具](#agent-工具)
 - [作品库](#作品库)
 - [主导性验收](#主导性验收)
 - [工作台 HTTP API](#工作台-http-api)
+- [工程地图（代码导航）](#工程地图代码导航)
 - [包 API 参考](#包-api-参考)
 - [快速开始](#快速开始)
 - [测试](#测试)
@@ -54,7 +56,7 @@ Kidmagic 不做又一个「AI 一键生成故事」的玩具。它把一次创�
 |---|---|---|
 | Agent 运行时 | `pi-agent-core`：Agent 循环、事件流、`beforeToolCall` / `finishTurn` 钩子、工具执行 | 引导状态机、阶段裁决、白名单闸门、消息落库 |
 | 模型与多模态 | `pi-ai`：多 provider 路由、图片输入、图生图、faux 测试 provider | 故事域提示词、人设 A/B、图生图封装、固定剧本 demo |
-| 会话持久化 | — | 作品库 15 张表（PostgreSQL，repo 全异步） |
+| 会话持久化 | — | 作品库 16 张表（PostgreSQL，repo 全异步） |
 | 工程范式 | `pi-coding-agent` 的工具装配 / 钩子组织（仅参考，不引代码） | 依赖注入工具工厂、离线确定性测试、HTTP server + H5 |
 
 依赖边界是硬约束：只 import 上游包的**顶层公开导出**，不引用 `src/` 内部路径，不复制上游代码。需要上游缺失的通用能力时，走 issue / PR 回流。
@@ -156,7 +158,7 @@ packages/kidmagic/
                 ▼                          ▼
      pi-ai 多 provider 路由         ┌──────────────────────┐
      （qwen-dedicated / 套餐 /      │ 作品库（PostgreSQL） │
-       OpenRouter / faux）         │  15 张表              │
+       OpenRouter / faux）         │  16 张表              │
        视觉理解：qwen 多模态        └──────────▲───────────┘
        图生图：通义万相                       │
               ▲                              │
@@ -170,6 +172,40 @@ packages/kidmagic/
 - **阶段机不依赖解析模型文本**。模型「说了什么」不可靠，「调用了哪个工具、传了什么结构化参数」才可靠。阶段切换由 `finishTurn` 钩子根据本回合工具结果裁决。
 - **安全默认拒绝**。Agent 只能调用白名单内的 9 个工具，任何额外工具在执行前即被拦截并终止该回合。
 - **视觉理解 / 图生图走独立服务**（`src/vision`、`src/image`、`src/jobs`），工具与 server 共用同一逻辑。
+
+---
+
+## 前端：页面流程示意图（用户侧）
+
+工作台是**单文件 H5**（`public/index.html`，SPA，视图切换统一 `show(id)`，无路由）。用户侧页面流程如下：
+
+```
+登录/注册 ──▶ 首页书架 ──▶ 新建·起名 ──▶ 画室（放画 → 确认 → 视觉理解）
+   │  ▲        │  ▲            │                          │
+   │  │        └──┼────────────┴──────────────────────────┘
+   │  │            ▼
+   │  └─ 书详情 ◀── 对话页（打字机讲故事 · AI 最少追问）
+   │               │
+   │               ▼
+   │       生成中·画布 ◀── 完成感页 ──▶ 章节阅读器（封面/翻页回放）
+   └──────────────┘
+```
+
+| 页面 | 视图 id | 进入时机 | 关键操作 → 跳转 |
+|---|---|---|---|
+| 登录 / 注册 | `view-auth` | 首次进入 | 手机号+密码，或「免登录体验」（游客） |
+| 首页书架 | `view-home` | 进入 / 返回 | 书卡片 → 书详情；卡片 ⋯ 改名 / 删除 |
+| 新建·起名 | `view-new` | 点「开始创作」 | 输入书名 → 建书+首个会话 → 画室 |
+| 画室 | `view-chat` 顶部 `#studio` | 上传素材 | 放画（≤10/批）→ 放好了 → 视觉理解聚类 |
+| 对话页 | `view-chat` | 讲故事 | 打字机对话；AI 最少追问；「🎨 孩子的画布」入口在输入框上方 |
+| 画布 | `asset-gallery` 弹窗 | 对话中 / 生成中 | 三区：🖼️ 你放进来的画 / 🎭 角色·场景 / 📚 已生成页面墙 |
+| 生成中 | `overlay` | 起绘本 | **3 秒后可点击关闭**去逛画布，后台继续配图 |
+| 完成感页 | `view-done` | 绘本生成 | 「翻一翻」→ 章节阅读器 |
+| 章节阅读器 | `view-reader` | 回看 / 回放 | 封面（默认该章第一页图，可上传换封面）→ 翻页（滑动/键盘） |
+| 书详情 | `view-book` | 打开书 / 回到章节 | 角色标签；章节列表（点击进阅读器，⋯ 改名/删除）；「接着讲」续写 |
+| 家长书架 | `view-home`（登录后） | 家长视角 | 按孩子分组显示作品 |
+
+交互要点：**封面可上传替换**；**章节支持改名/删除**；**生成不阻塞**——overlay 3 秒后可点掉去逛画布，配图在后台继续，全部完成仍会弹完成页。所有图片相对 uri 统一经 `imgSrc()` 转绝对路径展示。
 
 ---
 
@@ -236,7 +272,9 @@ packages/kidmagic/
 
 ## 作品库
 
-共 **15 张表**（DDL 见 `src/storage/schema-pg.ts`），**PostgreSQL**（`db-pg.ts` 的 pg.Pool，`repo.ts` 40+ 函数全异步、`$n` 占位、事务级联删书）。离线测试与 demo 脚本用 `db.ts` 的 SQLite 适配（`sqliteDbAdapter`）跑 `:memory:` 库。
+共 **16 张表**（DDL 见 `src/storage/schema-pg.ts`），**PostgreSQL**（`db-pg.ts` 的 pg.Pool，`repo.ts` 40+ 函数全异步、`$n` 占位、事务级联删书）。离线测试与 demo 脚本用 `db.ts` 的 SQLite 适配（`sqliteDbAdapter`）跑 `:memory:` 库。
+
+**uploads 目录分层**：素材原图 `uploads/ingest/`、章节封面 `uploads/cover/`、图生图 `uploads/gen/<YYYY-MM-DD>/`；每张落盘图在 `image_assets` 统一登记（`kind=ingest|cover|generated` + `ref_id`/`source_uri`），封面替换会先清旧登记再删旧文件（避免孤儿图）。前端展示统一 `imgSrc()` 保留相对路径；存量旧图（根目录）不迁移，`GET /uploads` 兼容服务。
 
 | 表 | 职责 |
 |---|---|
@@ -254,6 +292,7 @@ packages/kidmagic/
 | `users` | 家长账号（手机号唯一、scrypt 密码哈希、昵称） |
 | `children` | 孩子档案（`user_id` 外键 ON DELETE CASCADE） |
 | `invite_batches` / `invite_codes` | 管理员邀请码批次 + 码（P0-6） |
+| `image_assets` | uploads 统一图片资产登记：每张落盘图的 `kind`(ingest/cover/generated)、`ref_id`、`source_uri` |
 
 核心关系：
 
@@ -264,6 +303,29 @@ sessions ──< story_elements / assets / asset_clusters / session_messages
 books ──< ingest_items（上传批次）
 invite_batches ──< invite_codes
 ```
+
+### 表全量字段（PostgreSQL 权威 DDL：`src/storage/schema-pg.ts`）
+
+| 表 | 字段（类型） | 说明 |
+|---|---|---|
+| `ingest_items` | `id`(PK) `session_id` `book_id` `batch_no` `kind` `mime_type` `uri` `role` `width` `height` `status` `created_at` | 素材上传暂存批次（批量≤10、confirm/discard） |
+| `assets` | `id`(PK) `session_id` `kind` `mime_type` `uri` `ner_entities` `created_at` | 上传素材 + NER 实体 JSON |
+| `asset_clusters` | `id`(PK) `session_id` `cluster_type` `label` `confirmed` `asset_ids` `appearance` `created_at` | 半自动聚类组（角色/场景/道具） |
+| `sessions` | `id`(PK) `persona` `stage` `status` `current_book_id` `created_at` `updated_at` | 一次创作会话（阶段机运行态） |
+| `session_messages` | `id`(PK) `session_id` `role` `content` `tool_name` `created_at` | user/assistant/tool 消息留痕 |
+| `story_elements` | `id`(PK) `session_id` `book_id` `element_type` `content` `child_words` `order_idx` `created_at` | 结构化故事元素，`child_words` 是主导性红线 |
+| `characters` | `id`(PK) `name` `appearance` `personality` `catchphrase` `source_asset_id` `created_at` | 跨故事角色库（长期 IP，`name` 唯一去重） |
+| `books` | `id`(PK) `session_id` `title` `cover_asset_id` `status` `user_id` `child_id` `created_at` `updated_at` | 绘本（归属家长/孩子，游客为 NULL） |
+| `book_characters` | `book_id` `character_id` `role`（复合 PK） | 绘本 ↔ 角色多对多 |
+| `chapters` | `id`(PK) `book_id` `chapter_no` `title` `cover_asset_id` `recap_summary` `status` `created_at` | 章节 + 前情提要 + 封面 |
+| `book_pages` | `id`(PK) `chapter_id` `page_no` `text` `text_source` `image_asset_id` `generated_image_uri` `created_at` | 绘本页（`text_source`=child_raw/connector） |
+| `users` | `id`(PK) `phone`(UNIQUE) `password_hash` `nickname` `created_at` | 家长账号（scrypt 哈希） |
+| `children` | `id`(PK) `user_id`(FK→users) `name` `age` `avatar` `created_at` | 孩子档案 |
+| `invite_batches` | `id`(PK) `name` `count` `base_url` `note` `created_at` | 邀请码批次 |
+| `invite_codes` | `code`(PK) `batch_id`(FK→invite_batches) `status` `user_name` `book_id` `activated_at` `created_at` | 邀请码 |
+| `image_assets` | `id`(PK) `uri` `kind` `source_uri` `ref_id` `created_at` | uploads 统一图片资产登记（kind=ingest/cover/generated） |
+
+约束：`characters.name` 唯一（跨故事去重）；`children.user_id`、`invite_codes.batch_id` 外键 `ON DELETE CASCADE`；删书走 `repo.ts` 事务级联（books → chapters → book_pages 及该书素材/元素）。
 
 ---
 
@@ -312,6 +374,62 @@ invite_batches ──< invite_codes
 | GET | `/sessions/:id/assets` | 会话角色/场景资产 |
 
 对话接口当前为非流式 JSON，前端用**打字机动画**模拟流式（真 SSE 后置）。
+
+---
+
+## 工程地图（代码导航）
+
+面向二次开发者：按目录列出包内模块的**导出类/函数与关键参数**（类级导航），字段级细节以源码为权威，工程约束见 `AGENTS.md`。改动前先读对应文件再下手。
+
+### src/agent —— 状态机、提示词与一致性
+| 文件 | 导出 | 关键参数 / 说明 |
+|---|---|---|
+| `stages.ts` | `S0..S4` 阶段常量、`MAX_GAP_ROUNDS=2` | 阶段机运行态与追问上限 |
+| `story-agent.ts` | `createStoryAgent({ db, persona, sessionId, streamFn, imageQueue, continuation? })` | 装配 agent：白名单闸门、工具注入、finishTurn 阶段裁决、消息落库 |
+| `prompts.ts` | `buildSystemPrompt(persona)` | 人设 A/B + 主导性铁律 |
+| `asset-context.ts` | 素材上下文注入 | 把视觉理解结果注入 system 文本 |
+| `summary.ts` | 章节前情摘要 | 续写注入依据 |
+| `image-prompt.ts` | `buildPageImagePrompt`、`WorldCards` | 每帧自包含 prompt（角色/场景卡 + 固定前后缀） |
+| `consistency.ts` | `validateWorldCards` / `validateChapterPage` | 角色/场景卡与页面 prompt schema 校验 |
+| `reference-asset.ts` | `resolveReferenceImage` | 图生图主角参考图来源 |
+| `qwen-dedicated.ts` | provider 装配 | 百炼专属实例路由 |
+
+### src/tools —— 故事域工具（白名单 9 个）
+| 文件 | 导出（工具） | 关键参数 / 副作用 |
+|---|---|---|
+| `index.ts` | `createKidmagicTools({ db, runtime })` | 工具工厂，依赖注入；装配全部工具（含 `magic_render` 魔法棒语义反馈） |
+| `save-story-element.ts` | `save_story_element` | `childWords` 主导性红线 → `story_elements` |
+| `build-character-card.ts` | `build_character_card` | upsert 跨故事角色库 |
+| `ingest-assets.ts` | `ingest_assets` | 素材入库确认 / 聚类确认闭环 |
+| `analyze-ingest-batch.ts` | `analyze_ingest_batch` | 对该批素材视觉理解 + 聚类（薄壳 → `ingest-cluster.ts`） |
+| `save-book-title.ts` | `save_book_title` | 命名绘本（不覆盖已有书名） |
+| `start-book-generation.ts` | `start_book_generation` | 建书→建章→排版成页→BullMQ 配图 |
+| `world-state.ts` | `get_world_state` | 查询世界状态保持连续 |
+| `paginate.ts` | 元素→页排版 | `mergeChildPages` 等分页逻辑 |
+| `types.ts` | 工具参数 schema | TypeBox 定义 |
+
+### src/storage —— 作品库访问层
+| 文件 | 导出 | 说明 |
+|---|---|---|
+| `schema-pg.ts` | `PG_SCHEMA_SQL` | 16 表 DDL（权威，含幂等 ALTER） |
+| `schema.ts` | `SCHEMA_SQL` | SQLite DDL（离线测试/脚本） |
+| `db-pg.ts` | `Db`、pg 连接抽象 | pg.Pool，`$n` 占位、`tx` 事务 |
+| `db.ts` | `sqliteDbAdapter` | SQLite `:memory:` 适配 |
+| `repo.ts` | 40+ 数据访问函数 | 全异步、事务级联删书、`registerImageAsset` 等 |
+
+### src/voice / src/image / src/vision / src/jobs —— 外部能力
+| 文件 | 导出 | 说明 |
+|---|---|---|
+| `voice/tencent-asr.ts` | `tencentAsrSentence` | 腾讯 ASR（TC3 签名，儿童口音友好） |
+| `voice/volc-tts.ts` | 火山 TTS | 音色匹配 `seed-tts-2.0` |
+| `image/dashscope-image.ts` | `dashscopeGenerateImage` | 通义万相图生图 |
+| `vision/visual-understand.ts` | `visualUnderstand` | qwen 多模态视觉理解 |
+| `vision/ingest-cluster.ts` | `analyzeIngestBatch` | 素材理解 + 聚类 |
+| `jobs/image-jobs.ts` | `generateChapterImages` | 章节配图核心（worker/同步共用，`buildWorldCards` + schema 校验） |
+| `jobs/queue.ts` | Queue/Worker 工厂 | BullMQ + Redis，不可用自动降级同步 |
+
+### src/server.ts —— node:http 服务端
+导出服务入口（`PORT=8787`）：静态 H5 + JSON API（`/books`、`/uploads`、`/sessions/:id/messages`、`/api/auth|voice|admin`），启动幂等建表；写图走 `writeKindImage(kind)` + `image_assets` 登记。
 
 ---
 

@@ -32,7 +32,7 @@
 | `src/voice/tencent-asr.ts` | 腾讯云一句话识别（手写 TC3-HMAC 签名；**已通**） |
 | `src/voice/volc-tts.ts` | 火山单流 SSE TTS（**尚未调通**：`55000000 resource ID mismatched`，待换可用音色） |
 | `src/auth.ts` | P0-3 账号：scrypt 密码哈希 + HMAC-SHA256 JWT（零第三方） |
-| `src/storage/db-pg.ts` / `schema-pg.ts` / `repo.ts` | **PostgreSQL** 作品库：15 张表 + 40+ 数据访问函数（`$n` 占位、toNum、tx 级联） |
+| `src/storage/db-pg.ts` / `schema-pg.ts` / `repo.ts` | **PostgreSQL** 作品库：16 张表 + 40+ 数据访问函数（`$n` 占位、toNum、tx 级联） |
 | `src/storage/db.ts` / `schema.ts` | SQLite（`sqliteDbAdapter` 供离线测试/脚本） |
 | `src/server.ts` | node:http 工作台服务端（JSON API + 静态页，PORT=8787） |
 | `public/index.html` | H5 工作台前端（单文件内联 CSS/JS）：首页书架/起名/书详情/画室/对话/翻页回放/完成感/画布/资产弹窗 + P0-6 魔法装饰层 |
@@ -49,7 +49,7 @@
 - 入队失败 / Redis 不可用 → 调用方（`start_book_generation`）捕获并**降级同步图生图**；server 永不因队列不可用而崩。
 - 图生图每页串行 + 三层退避（429 命中 2500×attempt ms，否则 1200ms）。
 
-## 数据库（PostgreSQL，15 张表）
+## 数据库（PostgreSQL，16 张表）
 
 `src/storage/schema-pg.ts` 为权威 DDL，`schema.ts`（SQLite）一一对应。核心关系：
 
@@ -63,7 +63,7 @@ sessions ──< session_messages
 invite_batches ──< invite_codes（P0-6 管理员）
 ```
 
-- 表：`ingest_items / assets / asset_clusters / sessions / session_messages / story_elements / characters / books / book_characters / chapters / book_pages / users / children / invite_batches / invite_codes`。
+- 表：`ingest_items / assets / asset_clusters / sessions / session_messages / story_elements / characters / books / book_characters / chapters / book_pages / users / children / invite_batches / invite_codes / image_assets`。
 - `books` 有 `user_id/child_id` 归属列（游客两条均 NULL，保留免登录体验）。
 
 ## 代码约定
@@ -114,7 +114,7 @@ cd packages/kidmagic && npm run server   # http://localhost:8787
 
 - server 每次 `GET /` 重读 `public/index.html`，改前端即时生效、**无需重启 server**；改 `src/*` 才需重启。**用户约定：改完代码不要代启 server 进程，由用户自己编译启动看终端日志。**
 - `showConfirm()` 会用 `innerHTML` 替换 `#studio-actions`，**移除** `#pick-btn`/`#upload-btn`；`openChat` 必须每次重建，否则二次进入报 null。
-- 上传图 `uri` 自带 `uploads/` 前缀，缩略图要 `uri.split("/").pop()`；图生图页图在 `uploads/<date>/` 子目录，需保留路径。
+- 上传图 `uri` 自带 `uploads/` 前缀；目录按用途分层：素材 `uploads/ingest/`、封面 `uploads/cover/`、图生图 `uploads/gen/<date>/`。前端展示统一走 `imgSrc()`（保留相对路径），**不要**用 `uri.split("/").pop()` 截缩略图。每张落盘图在 `image_assets` 统一登记（`kind=ingest|cover|generated` + `ref_id`/`source_uri`，孤儿可清理）；封面替换会先清旧登记再删旧文件。存量旧图（`uploads/<file>` 根目录）不迁移，仍由 `GET /uploads` 兼容服务。
 - 前端网络调用统一走 `apiFetch`（已全局替换），失败 toast + 恢复，避免卡死 UI。
 - 魔法装饰层 `#km-sky` 固定定位 z-index:0、`pointer-events:none`；内容容器 `#app` 需 `z-index:1`，弹层（modal 40 / overlay 10）正常在上。
 
