@@ -50,6 +50,8 @@ export interface StoryRuntime extends StageState {
   bookId?: string;
   /** 最新章节 id（生成后就位） */
   chapterId?: string;
+  /** 续写时的目标章节号（P1；start_book_generation 未传 chapterNo 时兜底） */
+  continuationChapterNo?: number;
 }
 
 export function createRuntime(sessionId: string, persona: Persona = "A"): StoryRuntime {

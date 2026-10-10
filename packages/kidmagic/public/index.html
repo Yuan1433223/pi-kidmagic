@@ -1,0 +1,1172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kidmagic 故事机</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📖%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#FFF7EE">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Kidmagic">
+<style>
+:root{
+  --bg:#FFF7EE; --card:#FFFFFF; --ink:#3A2E39; --sub:#9A8F94;
+  --pink:#FF8BA7; --pink-d:#E56B8A; --blue:#7EC8E3; --green:#A8D8B0; --sun:#FFC94A;
+  --radius:22px; --radius-s:14px;
+  --shadow:0 6px 20px rgba(58,46,57,.08);
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+body{margin:0; font-family:"PingFang SC","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+  background:linear-gradient(180deg,#FFF7EE 0%,#FFF4F1 52%,#EFF7E6 100%); color:var(--ink); min-height:100vh;}
+button,a{touch-action:manipulation;}
+#app{max-width:560px; margin:0 auto; padding:20px 16px 96px; position:relative; z-index:1;}
+.view{display:none; animation:rise .25s ease;}
+.view.active{display:block;}
+@keyframes rise{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;}}
+
+.topbar{display:flex; align-items:center; gap:10px; margin-bottom:14px;}
+.topbar .brand{font-size:20px; font-weight:800;}
+.topbar .back{background:none; border:none; font-size:24px; cursor:pointer; padding:6px; border-radius:12px;}
+.section-title{font-size:15px; color:var(--sub); margin:14px 2px 10px; font-weight:600;}
+
+/* 书列表 */
+.book-grid{display:flex; flex-direction:column; gap:14px;}
+.book-card{display:flex; gap:14px; align-items:center; background:var(--card); border-radius:var(--radius);
+  padding:14px; box-shadow:var(--shadow); cursor:pointer; transition:transform .12s;}
+.book-card:active{transform:scale(.98);}
+.book-cover{width:64px; height:64px; border-radius:18px; display:flex; align-items:center; justify-content:center;
+  font-size:34px; flex:none; box-shadow:inset 0 0 0 2px rgba(255,255,255,.6); background:#FFF3D6;}
+.book-meta{flex:1; min-width:0;}
+.book-meta .t{font-size:17px; font-weight:700;}
+.book-meta .s{font-size:12.5px; color:var(--sub); margin-top:3px;}
+.book-card .arrow{font-size:20px; color:var(--sub);}
+.card-ops{display:flex; gap:2px; flex:none; margin-left:4px;}
+.card-ops .op{background:none; border:none; font-size:16px; cursor:pointer; padding:6px 7px; border-radius:10px; color:var(--sub);}
+.card-ops .op:active{transform:scale(.9);}
+/* P0-6 移动端触控目标：编辑/删除按钮 ≥44px */
+.card-ops .op{min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center;}
+/* P0-6 家长端书架：按孩子分组 */
+.shelf{margin-bottom:6px;}
+.shelf-title{font-size:13px; color:var(--pink-d); font-weight:800; letter-spacing:.5px; margin:18px 4px 10px;}
+/* P0-6 绘本读者（翻页回放） */
+#reader-page{min-height:280px;}
+.rd-cover{background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:30px 18px; text-align:center;}
+.rd-cover .em{font-size:64px; display:block; margin-bottom:10px;}
+.rd-cover .t{font-size:24px; font-weight:800;}
+.rd-cover .s{font-size:14px; color:var(--sub); margin-top:8px;}
+.rd-cover img.rd-coverimg{width:100%; max-height:300px; object-fit:cover; border-radius:16px; margin-bottom:10px; box-shadow:var(--shadow);}
+/* 章节操作（改名/删除/换封面） */
+.ch-ops{display:flex; gap:6px; margin-top:8px;}
+.ch-op{border:none; background:#fff; color:var(--pink-d); font-size:12px; font-weight:700; border-radius:10px; padding:4px 9px; cursor:pointer; box-shadow:var(--shadow);}
+.ch-op.danger{color:#C05050;}
+.ch-op:active{transform:scale(.95);}
+.rd-page{background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px; text-align:center;}
+.rd-page .no{font-size:12px; color:var(--pink-d); font-weight:700; margin-bottom:8px;}
+.rd-page .pt{font-size:17px; line-height:1.75; text-align:left; padding:0 4px;}
+.rd-page img{width:100%; max-height:70vh; object-fit:contain; border-radius:14px; margin-top:12px; display:block;}
+.rd-page .ph{padding:36px 16px; color:var(--sub); font-size:14px; border:2px dashed rgba(0,0,0,.12); border-radius:14px; margin-top:12px;}
+#reader-nav{display:flex; align-items:center; justify-content:center; gap:14px; margin:18px 0 4px;}
+.rd-btn{width:48px; height:48px; border:none; border-radius:50%; background:var(--card); box-shadow:var(--shadow);
+  font-size:20px; color:var(--pink-d); cursor:pointer; display:flex; align-items:center; justify-content:center;}
+.rd-btn:disabled{opacity:.35; cursor:default;}
+.rd-pos{font-size:14px; color:var(--sub); min-width:48px; text-align:center; font-weight:700;}
+/* P0-6 全局错误提示 */
+#toast{position:fixed; left:50%; bottom:96px; transform:translateX(-50%) translateY(12px);
+  background:rgba(58,46,57,.92); color:#fff; padding:12px 20px; border-radius:14px; font-size:14px;
+  opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:99; max-width:88%; text-align:center;}
+#toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+/* P0-6 旧版 UI 复用：魔法背景装饰层（只借装饰语言，保留现多彩配色） */
+.km-sky{position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;}
+.km-cloud{position:absolute; background:
+  radial-gradient(circle at 25% 68%, rgba(190,230,248,.85) 0 22px, transparent 23px),
+  radial-gradient(circle at 50% 52%, rgba(190,230,248,.9) 0 30px, transparent 31px),
+  radial-gradient(circle at 78% 66%, rgba(190,230,248,.85) 0 21px, transparent 22px);
+  opacity:.5; animation:km-drift 22s ease-in-out infinite alternate;}
+.km-cloud.c1{top:5%; right:-8%; width:150px; height:95px;}
+.km-cloud.c2{top:24%; left:-10%; width:120px; height:76px; animation-delay:-7s;}
+.km-cloud.c3{bottom:26%; right:-9%; width:132px; height:84px; animation-delay:-13s;}
+.km-star{position:absolute; font-size:20px; opacity:.7; animation:km-twinkle 4.2s ease-in-out infinite;}
+.km-star.s1{top:12%; left:7%;}
+.km-star.s2{top:6%; right:16%; animation-delay:-1.2s; font-size:15px;}
+.km-star.s3{bottom:20%; left:5%; animation-delay:-2.4s;}
+.km-star.s4{bottom:34%; right:8%; animation-delay:-3.1s; font-size:14px;}
+.km-trail{position:absolute; bottom:16%; left:-2%; width:150px; height:110px;
+  border-top:3px dashed rgba(123,207,221,.55); border-right:3px dashed rgba(123,207,221,.55);
+  border-radius:0 60px 0 0; transform:rotate(6deg); opacity:.5;}
+@keyframes km-drift{from{transform:translateX(0);}to{transform:translateX(-18px);}}
+@keyframes km-twinkle{0%,100%{opacity:.25; transform:scale(.92);}50%{opacity:.9; transform:scale(1.05);}}
+.empty{text-align:center; padding:48px 0 40px; color:var(--sub);}
+.empty .e{font-size:52px;}
+
+.btn{display:flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:54px;
+  border:none; border-radius:20px; font-size:17px; font-weight:700; cursor:pointer; color:#fff;
+  background:linear-gradient(135deg,var(--pink),var(--pink-d)); box-shadow:0 6px 16px rgba(229,107,138,.35);
+  transition:transform .12s; margin-top:18px;}
+.btn:active{transform:scale(.97);}
+.btn.ghost{background:var(--card); color:var(--ink); box-shadow:var(--shadow);}
+.btn.blue{background:linear-gradient(135deg,var(--blue),#5BA8C9); box-shadow:0 6px 16px rgba(94,169,201,.35);}
+.btn.green{background:linear-gradient(135deg,var(--green),#8CC49A); box-shadow:0 6px 16px rgba(140,196,154,.35);}
+.btn.small{min-height:44px; font-size:15px; margin-top:10px;}
+.btn[disabled]{opacity:.5; pointer-events:none;}
+
+.prompt-hero{text-align:center; padding:14px 0 4px;}
+.prompt-hero .e{font-size:52px; display:block; margin-bottom:10px;}
+.prompt-hero .t{font-size:21px; font-weight:800;}
+.prompt-hero .s{font-size:14px; color:var(--sub); margin-top:8px; line-height:1.6;}
+.input-wrap{margin-top:20px;}
+.textinput{width:100%; min-height:54px; border-radius:18px; border:2px solid #F0E4D8; background:#fff;
+  padding:12px 16px; font-size:17px; color:var(--ink); outline:none;}
+.textinput:focus{border-color:var(--pink);}
+.hint{font-size:12.5px; color:var(--sub); text-align:center; margin-top:10px;}
+
+.chapter-list{display:flex; flex-direction:column; gap:12px; margin-top:6px;}
+.chapter-card{background:var(--card); border-radius:var(--radius); padding:16px; box-shadow:var(--shadow);}
+.chapter-card .t{font-size:16px; font-weight:700;}
+.chapter-card .s{font-size:13px; color:var(--sub); margin-top:6px; line-height:1.7;}
+
+.footer-action{position:fixed; left:0; right:0; bottom:0; max-width:560px; margin:0 auto;
+  padding:12px 16px calc(12px + env(safe-area-inset-bottom)); background:linear-gradient(transparent,var(--bg) 40%);}
+
+/* ===== 对话页 ===== */
+#chat-scroll{display:flex; flex-direction:column; gap:14px; padding-bottom:16px;}
+.bubble{max-width:88%; padding:12px 16px; border-radius:20px; font-size:16px; line-height:1.65; white-space:pre-wrap; word-break:break-word;}
+.bubble.kid{align-self:flex-end; background:linear-gradient(135deg,var(--blue),#5BA8C9); color:#fff; border-bottom-right-radius:6px;}
+.bubble.ai{align-self:flex-start; background:var(--card); box-shadow:var(--shadow); border-bottom-left-radius:6px;}
+.bubble.ai .who{font-size:12px; color:var(--pink-d); font-weight:700; margin-bottom:4px;}
+.bubble.tool{align-self:center; background:#FFF3D6; box-shadow:var(--shadow); font-size:14px; color:#B08A3A; border-radius:16px; padding:10px 14px;}
+.caret::after{content:""; display:inline-block; width:2px; height:1em; background:var(--pink-d); vertical-align:-2px; margin-left:2px; animation:blink .8s infinite;}
+@keyframes blink{50%{opacity:0;}}
+
+/* 画室（素材上传+确认） */
+#studio{background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px; margin-bottom:14px;}
+#studio .st-t{font-size:16px; font-weight:800; margin-bottom:4px;}
+#studio .st-s{font-size:13px; color:var(--sub); line-height:1.6; margin-bottom:12px;}
+#pick-input{display:none;}
+.thumb-grid{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px;}
+.thumb{width:72px; height:72px; border-radius:14px; object-fit:cover; box-shadow:var(--shadow); background:#F7EFE2;}
+.thumb.dim{opacity:.35;}
+.label-chip{display:inline-flex; align-items:center; gap:4px; background:#FFF0F5; color:var(--pink-d);
+  border-radius:14px; padding:6px 12px; font-size:14px; font-weight:700; margin:4px 6px 4px 0;}
+.upload-hint{font-size:12.5px; color:var(--sub); margin-top:6px;}
+.seeing{display:flex; align-items:center; gap:8px; font-size:14px; color:var(--sub); min-height:48px; font-weight:600;}
+.wand-sm{font-size:24px; display:inline-block; animation:sway 1s ease-in-out infinite;}
+.dots{animation:blinkdots 1.2s infinite; font-weight:700;}
+@keyframes blinkdots{50%{opacity:.25;}}
+
+/* 画布入口：输入框上方的可点击弹窗入口（原对话区顶部常驻资产条移入画布弹窗） */
+#asset-rail{position:fixed; left:0; right:0; bottom:62px; max-width:560px; margin:0 auto; z-index:6; display:flex; gap:8px; align-items:center; padding:0 16px;}
+.canvas-open{flex:none; border:none; border-radius:14px; background:linear-gradient(135deg,var(--pink),var(--pink-d)); color:#fff; font-size:14px; font-weight:700; padding:9px 14px; cursor:pointer; box-shadow:0 4px 12px rgba(229,107,138,.35);}
+.canvas-open:active{transform:scale(.95);}
+.rail-status{font-size:12px; color:var(--sub); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.rail-title{font-size:13px; color:var(--pink-d); font-weight:700; margin:0 2px 6px;}
+.asset-track{display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; scrollbar-width:none;}
+.asset-track::-webkit-scrollbar{display:none;}
+.asset-card{flex:none; display:flex; align-items:center; gap:6px; background:#fff; border-radius:14px;
+  padding:7px 10px; box-shadow:var(--shadow); animation:pop .4s ease;}
+@keyframes pop{from{transform:scale(.7); opacity:0;} to{transform:scale(1); opacity:1;}}
+.ac-emoji{font-size:18px;}
+.ac-label{font-size:13px; font-weight:600; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.asset-empty{font-size:12px; color:var(--sub); padding:4px 2px;}
+.book-assets{margin:14px 0 4px;}
+
+/* 创作旅程：4 阶段进展条 */
+#stage-rail{display:flex; justify-content:space-between; position:relative; margin:2px 0 12px;}
+#stage-rail::before{content:""; position:absolute; top:16px; left:10%; right:10%; height:3px; background:#F0E4D8; border-radius:3px;}
+#stage-rail .stage{position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:5px; width:25%;}
+#stage-rail .stage span{width:34px; height:34px; border-radius:50%; background:#F7EFE2; display:flex; align-items:center; justify-content:center; font-size:17px; box-shadow:inset 0 0 0 2px #EAD9C4; transition:all .3s;}
+#stage-rail .stage i{font-style:normal; font-size:12px; color:var(--sub); font-weight:600;}
+#stage-rail .stage.on span{background:var(--pink); box-shadow:inset 0 0 0 2px var(--pink-d); animation:pop .3s ease;}
+#stage-rail .stage.on i{color:var(--pink-d);}
+#stage-rail .stage.cur span{animation:stg-breathe 1.6s ease-in-out infinite;}
+@keyframes stg-breathe{50%{transform:scale(1.15); box-shadow:0 0 0 5px rgba(255,139,167,.28);}}
+
+/* 画布背景：对话区背后的"生长"墙，生成期间铺已完成的页面图 */
+#view-chat{position:relative;}
+#canvas-bg{position:absolute; inset:0; z-index:0; pointer-events:none; display:flex; flex-wrap:wrap; align-content:flex-start;
+  gap:8px; padding:70px 14px 8px; opacity:.55;}
+#canvas-bg .cb-img{width:74px; height:74px; border-radius:14px; object-fit:cover; box-shadow:var(--shadow);
+  animation:cb-fade 1.2s ease; border:2px solid #fff;}
+@keyframes cb-fade{from{opacity:0; transform:scale(.8);} to{opacity:.42; transform:scale(1);}}
+#chat-scroll, #input-bar, #studio{position:relative; z-index:1;}
+
+/* 资产详情弹层：z-index 高于 asset-gallery（30>20），
+   避免从“素材和角色”总览点击资产时详情被压在总览下方 */
+#asset-modal{position:fixed; inset:0; background:rgba(58,46,57,.42); display:none; align-items:center; justify-content:center; z-index:30; padding:24px;}
+#asset-modal.show{display:flex;}
+.am-card{background:#fff; border-radius:22px; padding:22px 20px 20px; width:100%; max-width:340px; position:relative; box-shadow:0 12px 34px rgba(0,0,0,.16); animation:pop .25s ease;}
+.am-close{position:absolute; top:10px; right:12px; background:none; border:none; font-size:18px; cursor:pointer; color:var(--sub);}
+.am-em{font-size:44px; text-align:center; display:block; margin-bottom:10px;}
+.am-name{font-size:20px; font-weight:800; text-align:center; margin-bottom:12px;}
+.am-row{font-size:14px; color:var(--ink); line-height:1.7; margin-bottom:8px;}
+.am-row b{color:var(--pink-d);}
+.am-desc{font-size:14px; color:var(--sub); text-align:center; line-height:1.7;}
+
+/* 资产总览弹窗（素材碎片 + 角色/场景） */
+.rail-btn{background:var(--card); border:none; color:var(--pink-d); font-size:13px; font-weight:700;
+  border-radius:12px; padding:5px 10px; margin-left:8px; cursor:pointer; box-shadow:var(--shadow);}
+#asset-gallery{position:fixed; inset:0; background:rgba(58,46,57,.42); display:none; align-items:center; justify-content:center; z-index:20; padding:24px;}
+#asset-gallery.show{display:flex;}
+.ag-card{background:#fff; border-radius:22px; padding:22px 20px 20px; width:100%; max-width:360px; position:relative; box-shadow:0 12px 34px rgba(0,0,0,.16); animation:pop .25s ease; max-height:80vh; overflow-y:auto;}
+.ag-close{position:absolute; top:10px; right:12px; background:none; border:none; font-size:18px; cursor:pointer; color:var(--sub);}
+.ag-title{font-size:18px; font-weight:800; text-align:center; margin-bottom:4px;}
+.ag-sec{font-size:13px; color:var(--pink-d); font-weight:700; margin:16px 2px 8px;}
+.ag-grid{display:flex; flex-wrap:wrap; gap:12px;}
+.ag-item{position:relative;}
+.ag-badge{position:absolute; top:-6px; right:-5px; background:var(--sun); color:#7A5A10; font-size:10px; font-weight:700; border-radius:8px; padding:2px 6px; box-shadow:var(--shadow); z-index:1;}
+.ag-thumb{width:64px; height:64px; border-radius:12px; object-fit:cover; box-shadow:var(--shadow); background:#F7EFE2;}
+.ag-empty{font-size:13px; color:var(--sub); padding:6px 2px;}
+.ag-list{display:flex; flex-direction:column; gap:8px;}
+
+/* 输入区 */
+#input-bar{position:fixed; left:0; right:0; bottom:0; max-width:560px; margin:0 auto;
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom)); display:flex; gap:10px; align-items:flex-end;
+  background:linear-gradient(transparent,var(--bg) 30%);}
+#msg-input{flex:1; min-height:48px; max-height:120px; border-radius:18px; border:2px solid #F0E4D8; background:#fff;
+  padding:12px 14px; font-size:16px; color:var(--ink); outline:none; resize:none; line-height:1.5;}
+#msg-input:focus{border-color:var(--pink);}
+#send-btn{width:56px; height:48px; flex:none; border:none; border-radius:16px; font-size:22px; cursor:pointer;
+  background:linear-gradient(135deg,var(--pink),var(--pink-d)); color:#fff; box-shadow:0 4px 12px rgba(229,107,138,.35);}
+#send-btn:active{transform:scale(.95);}
+
+/* P0-4 语音：录音按钮 */
+#mic-btn{width:48px; height:48px; flex:none; border:none; border-radius:50%; font-size:20px; cursor:pointer;
+  background:#fff; border:2px solid #F0E4D8; color:var(--pink-d); box-shadow:var(--shadow);}
+#mic-btn:active{transform:scale(.95);}
+#mic-btn.rec{background:var(--pink); color:#fff; border-color:var(--pink); animation:pulse 1s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;} 50%{opacity:.55;}}
+
+/* 生成中覆盖层 */
+#overlay{position:fixed; inset:0; background:rgba(255,247,238,.94); display:none; flex-direction:column;
+  align-items:center; justify-content:center; z-index:10; text-align:center; padding:24px;}
+#overlay.show{display:flex;}
+#overlay .wand{font-size:64px; animation:sway 1.4s ease-in-out infinite; display:block; margin-bottom:16px;}
+@keyframes sway{0%,100%{transform:rotate(-8deg) translateY(0);} 50%{transform:rotate(8deg) translateY(-8px);}}
+#overlay .t{font-size:20px; font-weight:800; margin-bottom:8px;}
+#overlay .s{font-size:14px; color:var(--sub); line-height:1.7;}
+/* 3 秒后可自由点击关闭（露出画布去逛；生成仍在后台轮询） */
+#overlay.free{cursor:pointer;}
+#overlay .free-hint{display:none; margin-top:14px; font-size:13px; color:var(--pink-d); font-weight:700;}
+#overlay.free .free-hint{display:block;}
+.star{display:inline-block; animation:twinkle 1.2s infinite; font-size:18px; margin:0 3px;}
+@keyframes twinkle{0%,100%{opacity:.3; transform:scale(.8);} 50%{opacity:1; transform:scale(1.15);}}
+
+/* ===== 完成感页 ===== */
+#done-cover{text-align:center; background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:26px 18px; margin-bottom:14px;}
+#done-cover .em{font-size:60px; display:block; margin-bottom:8px;}
+#done-cover .t{font-size:24px; font-weight:800;}
+#done-cover .s{font-size:14px; color:var(--sub); margin-top:8px;}
+.page-card{background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px; margin-bottom:14px;}
+.page-card .no{font-size:12px; color:var(--pink-d); font-weight:700; margin-bottom:6px;}
+.page-card .pt{font-size:16px; line-height:1.7;}
+.page-card img{width:100%; border-radius:14px; margin-top:10px; display:block;}
+.done-praise{background:linear-gradient(135deg,var(--sun),#FFE08A); border-radius:var(--radius); padding:20px;
+  text-align:center; font-size:18px; font-weight:800; margin-bottom:18px; box-shadow:var(--shadow);}
+.done-praise small{display:block; font-size:13px; font-weight:500; color:#8A6A1F; margin-top:6px;}
+
+/* ===== P0-3 账号 ===== */
+.auth-zone{display:flex; align-items:center; gap:8px; margin-left:auto;}
+.auth-btn{border:none; border-radius:14px; padding:7px 14px; font-size:13px; font-weight:700; cursor:pointer;
+  background:linear-gradient(135deg,var(--pink),var(--pink-d)); color:#fff; box-shadow:var(--shadow);}
+.auth-btn.ghost{background:#fff; color:var(--pink-d); border:2px solid #F0E4D8; box-shadow:none;}
+.auth-chip{font-size:13px; font-weight:700; color:var(--ink);}
+.auth-chip b{color:var(--pink-d);}
+.modal{position:fixed; inset:0; background:rgba(90,60,40,.35); display:none; align-items:center; justify-content:center; z-index:40; padding:20px;}
+.modal.show{display:flex;}
+.modal-card{background:var(--card); border-radius:var(--radius); box-shadow:0 12px 40px rgba(0,0,0,.2);
+  padding:22px; width:100%; max-width:360px; max-height:88vh; overflow:auto;}
+.modal-card h3{font-size:20px; font-weight:800; text-align:center; margin:0 0 4px;}
+.modal-card .m-s{font-size:13px; color:var(--sub); text-align:center; margin-bottom:14px;}
+.m-field{margin-bottom:10px;}
+.m-field label{display:block; font-size:13px; font-weight:700; margin-bottom:4px;}
+.m-field input{width:100%; border-radius:14px; border:2px solid #F0E4D8; padding:11px 13px; font-size:15px;
+  outline:none; box-sizing:border-box;}
+.m-field input:focus{border-color:var(--pink);}
+.m-row{display:flex; gap:8px; margin-top:14px;}
+.m-row .btn{flex:1;}
+.child-list{margin-top:10px; display:flex; flex-direction:column; gap:8px;}
+.child-item{display:flex; align-items:center; gap:10px; border:2px solid #F0E4D8; border-radius:14px; padding:10px 12px; cursor:pointer;}
+.child-item.active{border-color:var(--pink); background:linear-gradient(135deg,var(--sun),#FFE7B0);}
+.child-item .cn{font-size:16px; font-weight:800; flex:1;}
+.child-item .ca{font-size:12px; color:var(--sub);}
+.auth-tip{font-size:12px; color:var(--sub); text-align:center; margin-top:12px; line-height:1.6;}
+</style>
+</head>
+<body>
+<!-- P0-6 旧版 UI 复用：魔法背景装饰层（云/星/虚线轨迹，纯 CSS 无图片） -->
+<div class="km-sky" aria-hidden="true">
+  <span class="km-cloud c1"></span><span class="km-cloud c2"></span><span class="km-cloud c3"></span>
+  <span class="km-star s1">⭐</span><span class="km-star s2">✨</span><span class="km-star s3">🌟</span><span class="km-star s4">✨</span>
+  <span class="km-trail"></span>
+</div>
+<div id="app">
+
+  <!-- 首页 -->
+  <section id="view-home" class="view active">
+    <div class="topbar"><div class="brand">📖 Kidmagic <b>故事机</b></div><div id="auth-zone" class="auth-zone"></div></div>
+    <div class="section-title">我的绘本</div>
+    <div id="book-list" class="book-grid"></div>
+    <div id="book-empty" class="empty" style="display:none;">
+      <div class="e">🌱</div><p>还没有绘本<br>点下面，让孩子开始第一个故事吧！</p>
+    </div>
+    <div class="footer-action"><button class="btn" onclick="goNew()">＋ 新的开始</button></div>
+  </section>
+
+  <!-- 登录 / 注册（P0-3） -->
+  <div id="auth-modal" class="modal">
+    <div class="modal-card">
+      <h3 id="auth-title">登录</h3>
+      <div class="m-s">用手机号登录，作品会保存到账号，换设备也能找回</div>
+      <div class="m-field"><label>手机号</label><input id="auth-phone" type="tel" maxlength="11" placeholder="11 位手机号"/></div>
+      <div class="m-field" id="auth-nick-field" style="display:none;"><label>昵称</label><input id="auth-nick" maxlength="16" placeholder="怎么称呼你"/></div>
+      <div class="m-field"><label>密码</label><input id="auth-password" type="password" placeholder="至少 6 位"/></div>
+      <div class="m-row">
+        <button class="btn ghost" onclick="toggleAuthMode()" id="auth-switch">注册</button>
+        <button class="btn" onclick="submitAuth()">进入 ✨</button>
+      </div>
+      <div class="auth-tip">也可以先当游客玩，<a href="#" onclick="closeAuth();return false;">不登录继续</a></div>
+    </div>
+  </div>
+
+  <!-- 孩子档案（P0-3） -->
+  <div id="child-modal" class="modal">
+    <div class="modal-card">
+      <h3>孩子档案</h3>
+      <div class="m-s">作品会存在孩子名下，每个孩子都有自己的绘本集</div>
+      <div id="child-list" class="child-list"></div>
+      <div class="m-field" style="margin-top:14px;"><label>添加孩子</label><input id="child-name" maxlength="16" placeholder="孩子的名字"/></div>
+      <div class="m-row">
+        <button class="btn ghost" onclick="closeChild()">关闭</button>
+        <button class="btn" onclick="addChild()">＋ 添加</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 起名页 -->
+  <section id="view-newbook" class="view">
+    <div class="topbar"><button class="back" onclick="goHome()">←</button><div class="brand">新的故事</div></div>
+    <div class="prompt-hero"><span class="e">✨</span><div class="t">给我们的新故事起个名字吧</div>
+      <div class="s">书名会印在绘本封面和每一页上<br>是孩子接下来创作的第一个锚点</div></div>
+    <div class="input-wrap"><input id="nb-title" class="textinput" maxlength="20" placeholder="比如：小兔子的冒险"/></div>
+    <button class="btn blue" onclick="createBook()">开始创作 🚀</button>
+  </section>
+
+  <!-- 书详情 -->
+  <section id="view-book" class="view">
+    <div class="topbar"><button class="back" onclick="goHome()">←</button><div class="brand" id="book-title"></div></div>
+    <div id="book-assets" class="book-assets">
+      <div class="rail-title">✨ 这本绘本里的角色</div>
+      <div id="book-asset-track" class="asset-track"></div>
+    </div>
+    <div class="section-title">章节</div>
+    <div id="chapter-list" class="chapter-list"></div>
+    <div class="footer-action"><button class="btn" id="cont-btn" onclick="continueBook()">接着讲这个故事 📖</button></div>
+  </section>
+
+  <!-- 对话页 -->
+  <section id="view-chat" class="view">
+    <div class="topbar"><button class="back" onclick="goHome()">←</button><div class="brand" id="chat-title"></div></div>
+
+    <div id="studio">
+      <div class="st-t">🎨 画室</div>
+      <div class="st-s">把孩子画的、做的手工、喜欢的照片放进来，琪琪老师会认出来并帮它编进故事。</div>
+      <input id="pick-input" type="file" accept="image/*" multiple onchange="onPick()"/>
+      <div id="thumb-grid" class="thumb-grid"></div>
+      <div id="studio-actions">
+        <button class="btn blue small" onclick="pickFiles()" id="pick-btn">＋ 放孩子的画</button>
+        <button class="btn green small" id="upload-btn" style="display:none;" onclick="uploadBatch()">放好了 ✨</button>
+      </div>
+      <div id="studio-result"></div>
+    </div>
+
+    <!-- 创作旅程：让孩子随时知道进行到哪一步 -->
+    <div id="stage-rail">
+      <div class="stage" data-s="1"><span>🎨</span><i>看画</i></div>
+      <div class="stage" data-s="2"><span>🗣️</span><i>听故事</i></div>
+      <div class="stage" data-s="3"><span>🧩</span><i>补故事</i></div>
+      <div class="stage" data-s="4"><span>📖</span><i>变绘本</i></div>
+    </div>
+    <div id="asset-rail">
+      <button class="canvas-open" onclick="openGallery()">🎨 孩子的画布</button>
+      <span id="rail-status" class="rail-status">点开看看这一章长出了什么</span>
+    </div>
+
+    <!-- 画布背景：生成期间已完成的页面逐页铺到这里，孩子能看到书"长出来" -->
+    <div id="canvas-bg"></div>
+    <div id="chat-scroll"></div>
+    <div id="input-bar">
+      <textarea id="msg-input" placeholder="按一下，说给琪琪老师听…" rows="1"></textarea>
+      <button id="mic-btn" onclick="toggleMic()" title="点击开始录音，再点结束发送">🎙️</button>
+      <button id="send-btn" onclick="sendMsg()">🚀</button>
+    </div>
+  </section>
+
+  <!-- 绘本读者视图（回看保存的绘本：翻页式，P0-6） -->
+  <section id="view-reader" class="view">
+    <div class="topbar"><button class="back" onclick="backToBook()">←</button><div class="brand" id="reader-title"></div></div>
+    <div id="reader-page"></div>
+    <div id="reader-nav">
+      <button id="rd-prev" class="rd-btn" onclick="readerGo(-1)">‹</button>
+      <div id="reader-pos" class="rd-pos">封面</div>
+      <button id="rd-next" class="rd-btn" onclick="readerGo(1)">›</button>
+    </div>
+    <div class="footer-action"><button class="btn" onclick="backToBook()">回到章节 🏠</button></div>
+  </section>
+
+  <!-- 完成感页 -->
+  <section id="view-done" class="view">
+    <div class="topbar"><button class="back" onclick="goHome()">←</button><div class="brand">绘本完成</div></div>
+    <div id="done-body"></div>
+    <div class="footer-action" style="display:flex; flex-direction:column; gap:10px;">
+      <button class="btn" onclick="readLatestChapter()">翻一翻这本绘本 📖</button>
+      <button class="btn ghost" onclick="goHome()">回到书架 🏠</button>
+    </div>
+  </section>
+</div>
+
+<!-- 资产详情弹层 -->
+<div id="asset-modal">
+  <div class="am-card">
+    <button class="am-close" onclick="closeAsset()">✕</button>
+    <div id="am-body"></div>
+  </div>
+</div>
+
+<!-- 画布弹窗（当前章节创作历程：素材 + 角色/场景 + 已生成页面墙） -->
+<div id="asset-gallery">
+  <div class="ag-card">
+    <button class="ag-close" onclick="closeGallery()">✕</button>
+    <div class="ag-title">🎨 这一章的画布</div>
+    <div class="ag-sec">🖼️ 你放进来的画</div>
+    <div id="ag-materials" class="ag-grid"></div>
+    <div class="ag-sec">🎭 角色与场景 · 琪琪老师认出来的</div>
+    <div id="asset-track" class="asset-track"></div>
+    <div class="ag-sec">📚 长出来的页面 · 生成中会一点点变多</div>
+    <div id="ag-pages" class="ag-grid"></div>
+  </div>
+</div>
+
+<!-- 生成中覆盖层：3 秒后可点击关闭（去逛画布），生成仍在后台轮询 -->
+<div id="overlay" onclick="if(this.classList.contains('free')) this.classList.remove('show')">
+  <span class="wand">🪄</span>
+  <div class="t">琪琪老师在把你的故事变成绘本…</div>
+  <div class="s"><span class="star">⭐</span><span class="star">✨</span><span class="star">🌟</span><span class="star">✨</span><span class="star">⭐</span><br>小兔子在等它的家呢</div>
+  <div class="free-hint">👆 点一下可以先去看看画布，绘本还在长出来</div>
+</div>
+
+<script>
+const API = "";
+const $ = (s)=>document.querySelector(s);
+const state = { books:[], current:{bookId:null, bookTitle:"", sessionId:null, chapterNo:null} };
+const chat = { pending:[], batchNo:null, uploaded:[], confirming:false, labels:[], busy:false, done:false };
+const COVERS = ["🐰","🐻","🦊","🐱","🐶","🦖","🐢","🐥","🐘","🦄"];
+const MAX_IMG = 10;
+
+/* P0-6 第二优先级：统一请求封装 + 全局错误提示（GET 5xx 自动重试；网络失败 toast） */
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function toast(msg){
+  let t=document.getElementById("toast");
+  if(!t){ t=document.createElement("div"); t.id="toast"; document.body.appendChild(t); }
+  t.textContent=msg; t.className="toast show";
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"), 2600);
+}
+const _f = window.fetch;
+async function apiFetch(url, opts={}){
+  const canRetry = !opts.method || opts.method==="GET"; // POST/写入不自动重试，避免重复副作用
+  const maxTry = canRetry ? ((opts.retries ?? 2)+1) : 1;
+  for(let i=0;i<maxTry;i++){
+    try{
+      const r = await _f(url, opts);
+      if(r.ok) return r;
+      if(canRetry && r.status>=500 && i<maxTry-1){ toast("网络开小差了，再试一次…"); await sleep(700); continue; }
+      return r; // 4xx 等非 5xx 交给调用方处理（auth 等需读 error）
+    }catch(e){
+      if(canRetry && i<maxTry-1){ toast("网络开小差了，再试一次…"); await sleep(700); continue; }
+      toast("连接不上服务器，请检查网络");
+      throw e;
+    }
+  }
+}
+
+function show(name){
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  $("#view-"+name).classList.add("active");
+  window.scrollTo(0,0);
+}
+function goHome(){ show("home"); loadBooks(); }
+function goNew(){ $("#nb-title").value=""; show("newbook"); setTimeout(()=>$("#nb-title").focus(),60); }
+function esc(s){ const d=document.createElement("div"); d.textContent=s==null?"":String(s); return d.innerHTML; }
+function coverOf(id){ let h=0; for(let i=0;i<id.length;i++) h=(h*31+id.charCodeAt(i))>>>0; return COVERS[h%COVERS.length]; }
+function fmtTime(ms){ if(!ms) return ""; const d=new Date(ms); return `${d.getMonth()+1}月${d.getDate()}日`; }
+
+/* ===== P0-3 账号 ===== */
+const AUTH_KEY="kidmagic_token";
+const auth={ token:localStorage.getItem(AUTH_KEY)||"", user:null, children:[], childId:localStorage.getItem("kidmagic_child")||"", childName:"" };
+function authHeaders(){ return {"Content-Type":"application/json"}; }
+function bearer(){ return auth.token? {"Authorization":"Bearer "+auth.token}: {}; }
+function renderAuth(){
+  const z=$("#auth-zone"); if(!z) return;
+  if(auth.user){
+    z.innerHTML=`<span class="auth-chip">👤 <b>${esc(auth.user.nickname||auth.user.phone)}</b></span>
+      <button class="auth-btn ghost" onclick="openChild()">${auth.childName?"🎒 "+esc(auth.childName):"孩子"}</button>
+      <button class="auth-btn ghost" onclick="logout()">退出</button>`;
+  }else{
+    z.innerHTML=`<button class="auth-btn" onclick="showAuth()">👤 登录 / 注册</button>`;
+  }
+}
+function showAuth(){
+  $("#auth-title").textContent="登录"; $("#auth-switch").textContent="注册";
+  $("#auth-nick-field").style.display="none"; $("#auth-modal").classList.add("show");
+}
+function toggleAuthMode(){
+  const login=$("#auth-title").textContent==="登录";
+  $("#auth-title").textContent=login?"注册":"登录";
+  $("#auth-switch").textContent=login?"登录":"注册";
+  $("#auth-nick-field").style.display=login?"block":"none";
+}
+function closeAuth(){ $("#auth-modal").classList.remove("show"); }
+async function submitAuth(){
+  const phone=$("#auth-phone").value.trim(); const password=$("#auth-password").value;
+  if(!/^1\d{10}$/.test(phone)){ alert("请输入 11 位手机号"); return; }
+  if(password.length<6){ alert("密码至少 6 位"); return; }
+  const isLogin=$("#auth-title").textContent==="登录";
+  const body={phone,password}; if(!isLogin) body.nickname=$("#auth-nick").value.trim();
+  const r=await apiFetch(API+(isLogin?"/api/auth/login":"/api/auth/register"),{method:"POST",headers:authHeaders(),body:JSON.stringify(body)});
+  const data=await r.json();
+  if(!r.ok){ alert(data.error||"操作失败"); return; }
+  auth.token=data.token; auth.user=data.user; localStorage.setItem(AUTH_KEY,auth.token);
+  closeAuth(); await loadAuth(); renderAuth();
+}
+function logout(){
+  auth.token=""; auth.user=null; auth.children=[]; auth.childId=""; auth.childName="";
+  localStorage.removeItem(AUTH_KEY); localStorage.removeItem("kidmagic_child");
+  renderAuth(); goHome();
+}
+async function loadAuth(){
+  if(!auth.token){ auth.user=null; auth.children=[]; auth.childName=""; return; }
+  try{
+    const r=await apiFetch(API+"/api/me",{headers:bearer()});
+    if(!r.ok){ auth.token=""; localStorage.removeItem(AUTH_KEY); auth.user=null; auth.children=[]; auth.childName=""; return; }
+    const data=await r.json(); auth.user=data.user; auth.children=data.children||[];
+    const saved=auth.children.find(c=>c.id===auth.childId);
+    auth.childId=saved? saved.id : (auth.children[0]?auth.children[0].id:"");
+    auth.childName=saved? saved.name : (auth.children[0]?auth.children[0].name:"");
+    if(auth.childId) localStorage.setItem("kidmagic_child",auth.childId);
+  }catch(e){}
+}
+function openChild(){ if(!auth.user){ showAuth(); return; } renderChildList(); $("#child-modal").classList.add("show"); }
+function closeChild(){ $("#child-modal").classList.remove("show"); }
+function renderChildList(){
+  const el=$("#child-list"); el.innerHTML="";
+  if(!auth.children.length){ el.innerHTML='<div class="ag-empty">还没有孩子档案，先加一个吧</div>'; return; }
+  for(const c of auth.children){
+    const item=document.createElement("div"); item.className="child-item"+(c.id===auth.childId?" active":"");
+    item.innerHTML=`<div class="cn">${esc(c.name)}</div><div class="ca">${c.age?c.age+" 岁":"年龄未填"}</div>`;
+    item.onclick=()=>{ auth.childId=c.id; auth.childName=c.name; localStorage.setItem("kidmagic_child",c.id); renderChildList(); renderAuth(); loadBooks(); };
+    el.appendChild(item);
+  }
+}
+async function addChild(){
+  const name=$("#child-name").value.trim(); if(!name){ $("#child-name").focus(); return; }
+  const r=await apiFetch(API+"/api/children",{method:"POST",headers:Object.assign(authHeaders(),bearer()),body:JSON.stringify({name})});
+  const data=await r.json();
+  if(!r.ok){ alert(data.error||"添加失败"); return; }
+  await loadAuth(); $("#child-name").value=""; renderChildList(); renderAuth();
+}
+
+/* ===== 首页 / 起名 / 书详情 ===== */
+async function loadBooks(){
+  try{
+    // P0-3：登录且选了孩子 → 只看该孩子的书；登录无孩子 → 该家长全部；游客 → 本机未绑定作品
+    const q=(auth.token&&auth.childId)?`?childId=${auth.childId}`:"";
+    const r=await apiFetch(API+"/books"+q); const data=await r.json(); state.books=data.books||[];
+    const el=$("#book-list"); el.innerHTML="";
+    $("#book-empty").style.display=state.books.length?"none":"block";
+    // P0-6 家长端书架：按孩子分组；无归属归「游客作品」
+    const groups=new Map();
+    for(const b of state.books){ const key=b.child_name||"游客作品"; if(!groups.has(key))groups.set(key,[]); groups.get(key).push(b); }
+    for(const [name, books] of groups){
+      const shelf=document.createElement("div"); shelf.className="shelf";
+      const sh=document.createElement("div"); sh.className="shelf-title"; sh.textContent=name; shelf.appendChild(sh);
+      const grid=document.createElement("div"); grid.className="book-grid"; shelf.appendChild(grid);
+      for(const b of books){
+        const card=document.createElement("div"); card.className="book-card"; card.onclick=()=>openBook(b.id,b.title);
+        const chap = b.chapter_count? `第${b.chapter_count}章 · ${fmtTime(b.updated_at)}` : "还没开始";
+        card.innerHTML=`<div class="book-cover">${coverOf(b.id)}</div>
+          <div class="book-meta"><div class="t">${esc(b.title)}</div><div class="s">${chap}</div></div>`;
+        const ops=document.createElement("div"); ops.className="card-ops";
+        const rn=document.createElement("button"); rn.className="op"; rn.textContent="✏️";
+        rn.onclick=(e)=>{ e.stopPropagation(); renameBook(b.id, b.title); };
+        const dl=document.createElement("button"); dl.className="op"; dl.textContent="🗑️";
+        dl.onclick=(e)=>{ e.stopPropagation(); delBook(b.id, b.title); };
+        ops.append(rn,dl); card.appendChild(ops);
+        grid.appendChild(card);
+      }
+      el.appendChild(shelf);
+    }
+  }catch(e){ console.error(e); }
+}
+async function renameBook(id, old){
+  const t=prompt("给这本书改个名字：", old); if(!t||!t.trim()) return;
+  try{ const r=await apiFetch(API+`/books/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:t.trim()})}); if(r.ok) loadBooks(); }catch(e){}
+}
+async function delBook(id, title){
+  if(!confirm(`确定要删除《${title}》吗？删掉就找不回来了。`)) return;
+  try{ const r=await apiFetch(API+`/books/${id}`,{method:"DELETE"}); if(r.ok) loadBooks(); }catch(e){}
+}
+async function createBook(){
+  const title=$("#nb-title").value.trim(); if(!title){ $("#nb-title").focus(); return; }
+  const body={title};
+  if(auth.token && auth.childId) body.childId=auth.childId; // 登录且选了孩子 → 作品挂到孩子档案
+  const r=await apiFetch(API+"/books",{method:"POST",headers:Object.assign(authHeaders(),bearer()),body:JSON.stringify(body)});
+  const data=await r.json();
+  if(data.bookId){ state.current.bookId=data.bookId; state.current.bookTitle=title; openChat(data.sessionId,title); }
+}
+function openBook(id,title){ state.current.bookId=id; state.current.bookTitle=title; loadBookDetail(id,title); }
+async function loadBookDetail(id,title){
+  $("#book-title").textContent=title;
+  const r=await apiFetch(API+"/books/"+id); const b=await r.json();
+  const el=$("#chapter-list"); el.innerHTML="";
+  if(b.chapters&&b.chapters.length){
+    $("#cont-btn").textContent="接着讲这个故事 📖";
+    for(const c of b.chapters){
+      const d=document.createElement("div"); d.className="chapter-card"; d.style.cursor="pointer";
+      d.onclick=()=>viewChapter(c.id);
+      d.innerHTML=`<div class="t">第${c.chapter_no}章 · ${esc(c.title||"")} ›</div><div class="s">${esc((c.recap_summary||"").slice(0,60))||"（还没内容）"}</div>`;
+      const ops=document.createElement("div"); ops.className="ch-ops";
+      const rn=document.createElement("button"); rn.textContent="改名"; rn.className="ch-op";
+      rn.onclick=(e)=>{ e.stopPropagation(); renameChapter(c); };
+      const del=document.createElement("button"); del.textContent="删除"; del.className="ch-op danger";
+      del.onclick=(e)=>{ e.stopPropagation(); removeChapter(c); };
+      ops.appendChild(rn); ops.appendChild(del);
+      d.appendChild(ops);
+      el.appendChild(d);
+    }
+  }else{
+    $("#cont-btn").textContent="✏️ 开始讲第一个故事";
+    el.innerHTML=`<div class="empty"><div class="e">📭</div><p>这本绘本还没有章节<br>点下面开始创作第一页</p></div>`;
+  }
+  loadBookAssets(id);
+  show("book");
+}
+async function renameChapter(c){
+  const v=prompt("给这一章改个名字", c.title||("第"+c.chapter_no+"章"));
+  if(v===null) return;
+  const t=v.trim(); if(!t) return;
+  const r=await apiFetch(API+`/books/${state.current.bookId}/chapters/${c.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:t})});
+  if(r.ok){ toast("章节已改名"); loadBookDetail(state.current.bookId,state.current.bookTitle); }
+  else toast("改名失败");
+}
+async function removeChapter(c){
+  if(!confirm(`删除「${c.title||("第"+c.chapter_no+"章")}」？这个章节的绘本会一起删掉。`)) return;
+  const r=await apiFetch(API+`/books/${state.current.bookId}/chapters/${c.id}`,{method:"DELETE"});
+  if(r.ok){ toast("章节已删除"); loadBookDetail(state.current.bookId,state.current.bookTitle); }
+  else toast("删除失败");
+}
+async function continueBook(){
+  const r=await apiFetch(API+`/books/${state.current.bookId}/continue`,{method:"POST"});
+  const data=await r.json();
+  state.current.chapterNo=data.chapterNo||null;
+  openChat(data.sessionId,state.current.bookTitle);
+}
+/* ===== 绘本读者：翻页回放（P0-6） ===== */
+const reader = { pages: [], i: 0, chapter: null, _x: 0 };
+async function viewChapter(cid){
+  const r=await apiFetch(API+`/books/${state.current.bookId}/chapters/${cid}/pages`);
+  const d=await r.json();
+  reader.chapter=d.chapter; reader.pages=d.pages||[]; reader.i=0;
+  $("#reader-title").textContent = d.chapter.title||("第"+d.chapter.chapter_no+"章");
+  renderReader();
+  show("reader");
+}
+function renderReader(){
+  const el=$("#reader-page"); el.innerHTML="";
+  if(reader.i===0){
+    // 封面：优先章节自定义封面(cover_asset_id)，否则默认该章第一页图，再否则占位
+    const c=reader.chapter;
+    const first=(reader.pages[0]&&reader.pages[0].generated_image_uri)?reader.pages[0].generated_image_uri:null;
+    const coverUri=c.cover_asset_id||first;
+    const inner=coverUri?`<img class="rd-coverimg" src="${imgSrc(coverUri)}" onerror="readerImgFail(this)"/>`:`<span class="em">📖</span>`;
+    el.innerHTML=`<div class="rd-cover">${inner}<div class="t">${esc(state.current.bookTitle)}</div><div class="s">第${c.chapter_no}章 · ${esc(c.title||"")}</div><button class="ch-op" onclick="uploadCover(event)">📷 换封面</button></div>`;
+  }else{
+    const p=reader.pages[reader.i-1];
+    const img = p.generated_image_uri
+      ? `<img src="${imgSrc(p.generated_image_uri)}" onerror="readerImgFail(this)"/>`
+      : `<div class="ph">✏️ 这一页是孩子讲的原话，还没有配图</div>`;
+    el.innerHTML=`<div class="rd-page"><div class="no">第 ${p.page_no} 页</div><div class="pt">${esc(p.text)}</div>${img}</div>`;
+  }
+  $("#reader-pos").textContent = reader.i===0 ? "封面" : `${reader.i} / ${reader.pages.length}`;
+  const pv=$("#rd-prev"), nx=$("#rd-next");
+  pv.disabled = reader.i<=0;
+  nx.disabled = reader.pages.length===0 || reader.i>=reader.pages.length;
+}
+/* 章节封面：上传自定义封面（复用 compress 压缩） */
+async function uploadCover(e){
+  e.stopPropagation();
+  if(!reader.chapter) return;
+  const inp=document.createElement("input"); inp.type="file"; inp.accept="image/*";
+  inp.onchange=async ()=>{
+    const f=inp.files[0]; if(!f) return;
+    try{
+      const p=await compress(f);
+      const r=await apiFetch(API+`/books/${state.current.bookId}/chapters/${reader.chapter.id}/cover`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mimeType:p.mimeType,base64:p.base64})});
+      if(r.ok){ toast("封面换好啦 ✨"); renderReader(); }
+      else toast("封面上传失败");
+    }catch(err){ toast("图片处理失败"); }
+  };
+  inp.click();
+}
+function readerGo(d){
+  const n=reader.i+d;
+  if(n<0 || n>reader.pages.length) return;
+  reader.i=n; renderReader();
+}
+/* 完成页「翻一翻这本绘本」：直接读最新一章进入翻页回放（复用 reader 状态机） */
+async function readLatestChapter(){
+  if(!state.current.bookId){ goHome(); return; }
+  const r=await apiFetch(API+`/books/${state.current.bookId}/latest-chapter/pages`);
+  const d=await r.json();
+  if(!d.chapter){ toast("这本绘本还没有可回看的章节"); return; }
+  reader.chapter=d.chapter; reader.pages=d.pages||[]; reader.i=0;
+  $("#reader-title").textContent = d.chapter.title||("第"+d.chapter.chapter_no+"章");
+  renderReader();
+  show("reader");
+}
+function readerImgFail(img){
+  const p=img.parentElement; if(!p) return;
+  const ph=document.createElement("div"); ph.className="ph"; ph.textContent="🖼️ 这一页图片暂时没加载出来";
+  p.replaceChild(ph, img);
+}
+document.addEventListener("touchstart",(e)=>{ if(!$("#view-reader").classList.contains("active"))return; const t=e.changedTouches[0]; reader._x=t.clientX; },{passive:true});
+document.addEventListener("touchend",(e)=>{ if(!$("#view-reader").classList.contains("active"))return; const t=e.changedTouches[0]; const dx=t.clientX-reader._x; if(Math.abs(dx)>50) readerGo(dx<0?1:-1); },{passive:true});
+document.addEventListener("keydown",(e)=>{ if(!$("#view-reader").classList.contains("active"))return; if(e.key==="ArrowLeft")readerGo(-1); if(e.key==="ArrowRight")readerGo(1); });
+function backToBook(){ loadBookDetail(state.current.bookId, state.current.bookTitle); }
+
+/* ===== 对话页：素材上传 ===== */
+function openChat(sessionId,title){
+  state.current.sessionId=sessionId;
+  $("#chat-title").textContent=title;
+  chat.pending=[]; chat.batchNo=null; chat.uploaded=[]; chat.confirming=false; chat.labels=[]; chat.busy=false; chat.done=false;
+  $("#chat-scroll").innerHTML="";
+  $("#thumb-grid").innerHTML="";
+  $("#studio-result").innerHTML="";
+  // 重建画室按钮：showConfirm 会用 innerHTML 替换 #studio-actions，导致 #pick-btn/#upload-btn 被移除，
+  // 若不复建，第二次进入对话页访问 #pick-btn 会 null 崩溃。
+  $("#studio-actions").innerHTML=`<button class="btn blue small" onclick="pickFiles()" id="pick-btn">＋ 放孩子的画</button>
+    <button class="btn green small" id="upload-btn" style="display:none;" onclick="uploadBatch()">放好了 ✨</button>`;
+  $("#studio").style.display="";
+  $("#msg-input").disabled=false; $("#send-btn").disabled=false;
+  $("#input-bar").style.display="";
+  // 重置画布并加载当前会话资产
+  seenAssets.clear();
+  canvasSeen.clear();
+  $("#canvas-bg").innerHTML="";
+  setStage(1);
+  $("#asset-track").innerHTML=`<div id="asset-empty" class="asset-empty">孩子讲出角色和场景后，会在这里一点点出现</div>`;
+  refreshAssets();
+  show("chat");
+}
+function pickFiles(){ $("#pick-input").click(); }
+async function onPick(){
+  const files=[...$("#pick-input").files]; $("#pick-input").value="";
+  for(const f of files.slice(0,MAX_IMG - chat.pending.length)){
+    try{ chat.pending.push(await compress(f)); }catch(e){ console.warn(e); }
+  }
+  renderPending();
+}
+function compress(file){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>{
+      const max=1024; let w=img.naturalWidth,h=img.naturalHeight;
+      if(w>h && w>max){ h=Math.round(h*max/w); w=max; }
+      else if(h>=w && h>max){ w=Math.round(w*max/h); h=max; }
+      const cv=document.createElement("canvas"); cv.width=w; cv.height=h;
+      cv.getContext("2d").drawImage(img,0,0,w,h);
+      const url=cv.toDataURL("image/jpeg",0.85);
+      resolve({mimeType:"image/jpeg", base64:url.split(",")[1]});
+    };
+    img.onerror=reject; img.src=URL.createObjectURL(file);
+  });
+}
+function renderPending(){
+  const g=$("#thumb-grid"); g.innerHTML="";
+  for(const p of chat.pending){
+    const i=document.createElement("img"); i.className="thumb"; i.src="data:image/jpeg;base64,"+p.base64; g.appendChild(i);
+  }
+  $("#upload-btn").style.display=chat.pending.length?"":"none";
+  $("#pick-btn").textContent=chat.pending.length>=MAX_IMG?"画满了（10张）":"＋ 放孩子的画";
+}
+async function uploadBatch(){
+  if(!chat.pending.length||chat.busy) return;
+  chat.busy=true; setStudio("正在收好孩子的画…");
+  try{
+    const body=JSON.stringify({images:chat.pending, sessionId: state.current.sessionId});
+    const r=await apiFetch(API+`/books/${state.current.bookId}/uploads`,{method:"POST",headers:{"Content-Type":"application/json"},body});
+    if(!r.ok){ setStudio("⚠️ 上传没成功，再试一次"); return; }
+    const data=await r.json();
+    chat.batchNo=data.batchNo; chat.uploaded=data.items;
+    chat.pending=[]; renderPending();
+    setStudio(`收到 ${data.count} 张画啦！`, renderUploaded);
+    showConfirm();
+  }catch(e){ setStudio("⚠️ 网络有点卡，再试一次"); }
+  finally{ chat.busy=false; }
+}
+function renderUploaded(){
+  const g=$("#thumb-grid"); g.innerHTML="";
+  for(const it of chat.uploaded) g.insertAdjacentHTML("beforeend",`<img class="thumb" src="/uploads/${it.uri.split("/").pop()}"/>`);
+}
+function showConfirm(){
+  const ar=$("#studio-actions");
+  ar.innerHTML=`<button class="btn blue small" id="cfm-btn" onclick="confirmBatch()">孩子确认：就这些画 ✅</button>`;
+}
+async function confirmBatch(){
+  if(chat.confirming) return; chat.confirming=true;
+  $("#cfm-btn").disabled=true;
+  setStudio(`<div class="seeing"><span class="wand-sm">🪄</span> 琪琪老师正在认真看你的画<span class="dots">•••</span></div>`);
+  try{
+    const cf=await apiFetch(API+`/books/${state.current.bookId}/uploads/confirm`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({batchNo:chat.batchNo})});
+    if(!cf.ok){ setStudio("⚠️ 确认失败，再试一次"); return; }
+    const an=await apiFetch(API+`/books/${state.current.bookId}/uploads/${chat.batchNo}/analyze?session=${encodeURIComponent(state.current.sessionId)}`,{method:"POST"});
+    const res=await an.json();
+    chat.labels=res.labels||[];
+    if(chat.labels.length){
+      const chip=chat.labels.map(l=>`<span class="label-chip">✨ ${esc(l)}</span>`).join("");
+      setStudio(`琪琪老师认出来了：${chip}`, ()=>{}, true);
+    }else setStudio("琪琪老师还没认全，没关系，先听听孩子讲！", ()=>{}, true);
+  }catch(e){ setStudio("⚠️ 看画出错了，再试一次"); }
+  finally{ chat.confirming=false; }
+  // 收起画室，进入对话
+  setTimeout(()=>{ $("#studio").style.display="none"; }, 1800);
+  $("#msg-input").placeholder="孩子可以开始讲了：画了什么、发生了什么…";
+}
+function setStudio(msg, extra, keepActions){
+  const r=$("#studio-result"); r.innerHTML=`<div class="upload-hint">${msg}</div>`;
+  if(extra) extra();
+}
+
+
+/* ===== 对话页：讲故事（打字机） ===== */
+function stripMD(s){ return String(s??"").replace(/\*\*/g,""); }
+function makeAssetCard(a){
+  const emoji=a.type==="character"?"🧸":"🏞️";
+  const card=document.createElement("div"); card.className="asset-card"; card.style.cursor="pointer";
+  card.onclick=()=>openAsset(a);
+  card.innerHTML=`<span class="ac-emoji">${emoji}</span><span class="ac-label">${esc(stripMD(a.label))}</span>`;
+  return card;
+}
+async function loadBookAssets(id){
+  try{
+    const track=$("#book-asset-track"); if(!track) return;
+    const r=await apiFetch(API+"/books/"+id+"/assets");
+    const d=await r.json();
+    track.innerHTML="";
+    const all=[...(d.characters||[]).map(c=>({label:c.label,type:"character",detail:c.detail})), ...(d.settings||[]).map(s=>({label:s.label,type:"setting"}))];
+    for(const a of all) track.appendChild(makeAssetCard(a));
+    if(!all.length){ const e=document.createElement("div"); e.className="asset-empty"; e.textContent="这本书还没提取到角色和场景"; track.appendChild(e); }
+  }catch(e){}
+}
+const seenAssets = new Set();
+const canvasSeen = new Set();
+async function refreshAssets(){
+  try{
+    const r=await apiFetch(API+`/sessions/${state.current.sessionId}/assets`);
+    const d=await r.json();
+    const track=$("#asset-track"); if(!track) return;
+    const all=[...(d.characters||[]).map(c=>({label:c.label,type:"character"})), ...(d.settings||[]).map(s=>({label:s.label,type:"setting"}))];
+    for(const a of all){
+      const key=a.type+":"+a.label;
+      if(seenAssets.has(key)) continue;
+      seenAssets.add(key);
+      track.appendChild(makeAssetCard(a));
+    }
+    const has=track.querySelectorAll(".asset-card").length;
+    const empty=document.getElementById("asset-empty");
+    if(empty) empty.style.display=has?"none":"block";
+  }catch(e){}
+}
+function openAsset(a){
+  const body=$("#am-body"); if(!body) return;
+  if(a.type==="character" && a.detail){
+    body.innerHTML=`<span class="am-em">🧸</span><div class="am-name">${esc(stripMD(a.detail.name))}</div>
+      <div class="am-row"><b>长得像</b>　${esc(stripMD(a.detail.appearance))}</div>
+      <div class="am-row"><b>性格</b>　${esc(stripMD(a.detail.personality))}</div>
+      ${a.detail.catchphrase?`<div class="am-row"><b>口头禅</b>　${esc(stripMD(a.detail.catchphrase))}</div>`:""}`;
+  }else if(a.type==="character"){
+    body.innerHTML=`<span class="am-em">🧸</span><div class="am-name">${esc(stripMD(a.label))}</div>
+      <div class="am-desc">多讲讲它是谁，琪琪老师会帮你记下来～</div>`;
+  }else{
+    body.innerHTML=`<span class="am-em">🏞️</span><div class="am-name">${esc(stripMD(a.label))}</div>
+      <div class="am-desc">这是故事发生的地方</div>`;
+  }
+  $("#asset-modal").classList.add("show");
+}
+function closeAsset(){ $("#asset-modal").classList.remove("show"); }
+/* 资产总览弹窗：素材碎片（原图）+ 角色/场景（可点看详情） */
+function openGallery(){
+  $("#asset-gallery").classList.add("show");
+  loadGallery();
+}
+function closeGallery(){ $("#asset-gallery").classList.remove("show"); }
+async function loadGallery(){
+  const g=$("#ag-materials"); g.innerHTML=`<div class="ag-empty">正在整理…</div>`;
+  try{
+    const m=await (await apiFetch(API+`/books/${state.current.bookId}/materials`)).json();
+    g.innerHTML="";
+    for(const it of (m.materials||[])){
+      const badge=(it.status && it.status!=="confirmed")?`<span class="ag-badge">待确认</span>`:"";
+      g.insertAdjacentHTML("beforeend",`<div class="ag-item">${badge}<img class="ag-thumb" src="/uploads/${it.uri.split("/").pop()}"/></div>`);
+    }
+    if(!(m.materials||[]).length) g.innerHTML=`<div class="ag-empty">还没有上传素材</div>`;
+  }catch(e){ g.innerHTML=`<div class="ag-empty">素材加载失败</div>`; }
+  // 角色与场景：由 refreshAssets 在对话推进时填充画布弹窗内的 #asset-track，无需在此重复
+  // 已生成的页面墙（创作历程，生成中会一点点变多）
+  try{
+    const pg=$("#ag-pages"); pg.innerHTML=`<div class="ag-empty">正在看看绘本长到哪了…</div>`;
+    const d=await (await apiFetch(API+`/books/${state.current.bookId}/latest-chapter/pages`)).json();
+    const imgs=(d.pages||[]).filter(p=>p.generated_image_uri && String(p.generated_image_uri).startsWith("uploads/"));
+    pg.innerHTML="";
+    for(const p of imgs) pg.insertAdjacentHTML("beforeend",`<img class="ag-thumb" src="/${p.generated_image_uri}"/>`);
+    if(!imgs.length) pg.innerHTML=`<div class="ag-empty">页面还在长出来…</div>`;
+  }catch(e){ const pg=$("#ag-pages"); if(pg) pg.innerHTML=`<div class="ag-empty">页面加载失败</div>`; }
+}
+function addBubble(role, text, caret){
+  const el=document.createElement("div");
+  el.className="bubble "+(role==="kid"?"kid":"ai");
+  if(role==="ai"){ const who=document.createElement("div"); who.className="who"; who.textContent="琪琪老师"; el.appendChild(who); }
+  const body=document.createElement("div");
+  if(caret){ body.className="caret"; body.textContent=""; } else body.textContent=text;
+  el.appendChild(body); $("#chat-scroll").appendChild(el);
+  scrollChat(); return {body,el};
+}
+function addTool(text){
+  const el=document.createElement("div"); el.className="bubble tool"; el.textContent=text;
+  $("#chat-scroll").appendChild(el); scrollChat();
+}
+function scrollChat(){ const s=$("#chat-scroll"); s.scrollIntoView({behavior:"smooth", block:"end"}); }
+function typeText(body, text, onDone){
+  let i=0;
+  const t=setInterval(()=>{
+    i+=2; body.textContent=text.slice(0,i); scrollChat();
+    if(i>=text.length){ clearInterval(t); body.classList.remove("caret"); if(onDone) onDone(); }
+  },16);
+}
+function busyUI(on){ $("#msg-input").disabled=on; $("#send-btn").disabled=on; $("#send-btn").style.opacity=on?"0.5":"1"; $("#mic-btn").disabled=on; $("#mic-btn").style.opacity=on?"0.5":"1"; }
+
+/* ===== P0-4 语音：录音（ASR）+ 播放（TTS） ===== */
+let micRec=null, micChunks=[], micOn=false;
+function bytesToBase64(bytes){ let bin=""; for(let i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]); return btoa(bin); }
+/* 腾讯 ASR 不支持 webm，录音后重采样为 16k 单声道 WAV（decodeAudioData 解码 → 线性插值重采样 → WAV 头） */
+async function webmToWav16k(blob){
+  const Ctx=window.AudioContext||window.webkitAudioContext;
+  const ac=new Ctx();
+  let buf;
+  try{ buf=await ac.decodeAudioData(await blob.arrayBuffer()); }finally{ ac.close(); }
+  const srcRate=buf.sampleRate, ch0=buf.getChannelData(0);
+  const outLen=Math.ceil(buf.duration*16000), out=new Float32Array(outLen);
+  const ratio=srcRate/16000;
+  for(let i=0;i<outLen;i++){ const pos=i*ratio, i0=Math.floor(pos), i1=Math.min(i0+1,ch0.length-1), f=pos-i0; out[i]=ch0[i0]*(1-f)+ch0[i1]*f; }
+  const pcm=new Int16Array(outLen);
+  for(let i=0;i<outLen;i++){ let s=Math.max(-1,Math.min(1,out[i])); pcm[i]=s<0?s*0x8000:s*0x7FFF; }
+  const sr=16000, blockAlign=2, byteRate=sr*blockAlign;
+  const ab=new ArrayBuffer(44+pcm.length*2), dv=new DataView(ab);
+  const w=(o,s)=>{ for(let i=0;i<s.length;i++) dv.setUint8(o+i,s.charCodeAt(i)); };
+  w(0,"RIFF"); dv.setUint32(4,36+pcm.length*2,true); w(8,"WAVE"); w(12,"fmt ");
+  dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,1,true);
+  dv.setUint32(24,sr,true); dv.setUint32(28,byteRate,true); dv.setUint16(32,blockAlign,true); dv.setUint16(34,16,true);
+  w(36,"data"); dv.setUint32(40,pcm.length*2,true);
+  for(let i=0;i<pcm.length;i++) dv.setInt16(44+i*2,pcm[i],true);
+  return new Blob([ab],{type:"audio/wav"});
+}
+async function toggleMic(){
+  if(chat.busy||micOn){ if(micOn) stopRec(); return; }
+  if(!navigator.mediaDevices||!window.MediaRecorder){ addTool("⚠️ 当前浏览器不支持录音，请用 Chrome/Edge"); return; }
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    micRec=new MediaRecorder(stream); micChunks=[];
+    micRec.ondataavailable=e=>{ if(e.data&&e.data.size) micChunks.push(e.data); };
+    micRec.onstop=async()=>{
+      stream.getTracks().forEach(t=>t.stop());
+      const blob=new Blob(micChunks,{type:micRec.mimeType||"audio/webm"});
+      micOn=false; $("#mic-btn").classList.remove("rec"); $("#mic-btn").textContent="🎙️";
+      let wav;
+      try{ wav=await webmToWav16k(blob); }catch(e){ addTool("⚠️ 录音转码失败，再试一次"); return; }
+      await recognize(wav);
+    };
+    micRec.start(); micOn=true; $("#mic-btn").classList.add("rec"); $("#mic-btn").textContent="⏹";
+  }catch(e){ addTool("⚠️ 麦克风不可用："+(e&&e.message?e.message:"请授权")); }
+}
+function stopRec(){ if(micRec&&micRec.state!=="inactive") micRec.stop(); }
+async function recognize(blob){
+  if(!blob.size) return;
+  busyUI(true);
+  try{
+    const buf=await blob.arrayBuffer(); const b64=bytesToBase64(new Uint8Array(buf));
+    const r=await apiFetch(API+"/api/voice/recognize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({audio:b64,mime:blob.type})});
+    const d=await r.json();
+    if(!r.ok||!d.text){ addTool("⚠️ "+((d&&d.error)||"没听清，再说一遍好吗？")); return; }
+    $("#msg-input").value=d.text;
+    sendMsg();
+  }catch(err){ addTool("⚠️ 录音识别失败，再试一次"); }
+  finally{ busyUI(false); }
+}
+function playReply(text){
+  if(!text) return;
+  apiFetch(API+"/api/voice/tts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})})
+    .then(r=>{ if(!r.ok) throw 0; return r.blob(); })
+    .then(b=>{ const u=URL.createObjectURL(b); const a=new Audio(u); a.play().catch(()=>{}); })
+    .catch(()=>{});
+}
+
+/* 创作旅程阶段指示：1 看画 → 2 听故事 → 3 补故事 → 4 变绘本 */
+function setStage(n){
+  document.querySelectorAll("#stage-rail .stage").forEach((el,i)=>{
+    const s=i+1; el.classList.toggle("on", s<=n); el.classList.toggle("cur", s===n);
+  });
+}
+
+/* 画布轮询：生成期间拉最新章页面，把已完成的图逐页铺到画布背景 */
+async function pollCanvas(){
+  if(!state.current.bookId) return;
+  const bg=$("#canvas-bg"); if(!bg) return;
+  try{
+    const d=await (await apiFetch(API+`/books/${state.current.bookId}/latest-chapter/pages`)).json();
+    for(const p of (d.pages||[])){
+      if(!p.generated_image_uri) continue;
+      const uri=p.generated_image_uri;
+      if(!uri.startsWith("uploads/")) continue; // 只铺本地落盘图；旧外链（已过期/不可靠）跳过
+      if(canvasSeen.has(uri)) continue;
+      canvasSeen.add(uri);
+      const img=document.createElement("img"); img.className="cb-img"; img.src="/"+uri; // uri 可能含子目录（uploads/<date>/<file>），不能只取文件名
+      bg.appendChild(img);
+    }
+  }catch(e){}
+}
+
+async function sendMsg(){
+  const txt=$("#msg-input").value.trim();
+  if(!txt||chat.busy) return;
+  $("#msg-input").value="";
+  addBubble("kid", txt);
+  chat.busy=true; busyUI(true);
+
+  const wand=$("#overlay"); wand.classList.remove("show");
+
+  // 生成期间轮询画布，边生成边把已完成的页铺到背景
+  const canvasTimer=setInterval(pollCanvas,1500);
+
+  try{
+    const r=await apiFetch(API+`/sessions/${state.current.sessionId}/messages`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:txt})});
+    if(!r.ok){ const e=await r.json(); addTool("⚠️ "+esc(e.error||"出错了")); return; }
+    const data=await r.json();
+    refreshAssets();
+    // 创作旅程推进 + 工具反馈动画（魔法棒 / 缺口 / 生成）
+    const hasGen=(data.feedback||[]).some(f=>f.tool==="start_book_generation");
+    if(hasGen) setStage(4); else setStage(2);
+    for(const f of data.feedback||[]){
+      if(f.tool==="magic_render"){ addTool("🪄 魔法棒一挥～"); if(!hasGen) setStage(2); }
+      if(f.tool==="check_skeleton" && f.args && f.args.gaps && f.args.gaps.length){ addTool("🔍 琪琪老师觉得故事里还缺：角色名字/结局…"); setStage(3); }
+    }
+    // 打字机显示回复
+    const {body,el}=addBubble("ai","",true);
+    typeText(body, data.reply||"", async ()=>{
+      playReply(data.reply||""); // P0-4：琪琪老师开口回应（TTS）
+      if(hasGen) await startGenerate();
+    });
+  }catch(err){
+    addTool("⚠️ 网络有点小卡，再试一次");
+  }finally{
+    clearInterval(canvasTimer);
+    chat.busy=false; busyUI(false);
+  }
+}
+
+/* ===== 生成绘本 + 完成感 ===== */
+async function startGenerate(){
+  const ov=$("#overlay"); ov.classList.add("show"); ov.classList.remove("free");
+  const rs=$("#rail-status"); if(rs) rs.textContent="✨ 绘本正在长出来…";
+  // 3 秒后覆盖层可点击关闭（去逛画布），生成仍在后台轮询
+  setTimeout(()=>{ ov.classList.add("free"); }, 3000);
+  await new Promise(r=>setTimeout(r,1600));
+  // 轮询最新章 pages（图生图可能后到）
+  let pages=null, tries=0;
+  while(tries<12){
+    try{
+      const b=await (await apiFetch(API+`/books/${state.current.bookId}`)).json();
+      const latest=b.chapters? b.chapters[b.chapters.length-1] : null;
+      if(latest){
+        const pr=await (await apiFetch(API+`/books/${state.current.bookId}/chapters/${latest.id}/pages`)).json();
+        pages=pr.pages||[];
+        const imgs=pages.filter(p=>p.generated_image_uri);
+        if(imgs.length>=pages.length) break; // 全有图
+        if(imgs.length>=Math.max(1,pages.length-1)) break;
+      }
+    }catch(e){}
+    tries++; await new Promise(r=>setTimeout(r,1500));
+  }
+  ov.classList.remove("show"); ov.classList.remove("free");
+  if(rs) rs.textContent="点开看看这一章长出了什么";
+  showDone(pages||[]);
+}
+function showDone(pages){
+  const b=state.current;
+  const body=$("#done-body"); body.innerHTML="";
+  const cover=document.createElement("div"); cover.id="done-cover";
+  cover.innerHTML=`<span class="em">📖</span><div class="t">${esc(b.bookTitle)}</div>
+    <div class="s">孩子亲手讲出来的第一个故事</div>`;
+  body.appendChild(cover);
+  if(pages.length){
+    for(const p of pages){
+      const c=document.createElement("div"); c.className="page-card"; c.dataset.pid=p.id;
+      const img=p.generated_image_uri? `<img src="${imgSrc(p.generated_image_uri)}"/>` : `<div class="ph">✨ 魔法正在画画…</div>`;
+      c.innerHTML=`<div class="no">第 ${p.page_no} 页</div><div class="pt">${esc(p.text)}</div>${img}`;
+      body.appendChild(c);
+    }
+  }else{
+    const e=document.createElement("div"); e.className="page-card";
+    e.innerHTML="<div class='pt'>这一章还没生成页面，先回书架看看，或再讲一次。</div>"; body.appendChild(e);
+  }
+  const praise=document.createElement("div"); praise.className="done-praise";
+  praise.innerHTML=`🎉 这是你自己讲的故事！<small>明天还可以接着讲，把它变得更长、更精彩</small>`;
+  body.appendChild(praise);
+  show("done");
+  pollDoneImages(); // 配图可能异步后到：缺图页后台补图（BullMQ），而不是等满 18s 一次性渲染
+}
+
+/** 本地落盘图 uri=`uploads/xxx`，统一转绝对路径 `/uploads/xxx`（书详情页等非根路径也能加载） */
+function imgSrc(u){ return u && u.startsWith("uploads/") ? "/"+u : u; }
+
+/**
+ * 完成感页异步补图：配图 worker 仍在后台时，缺图页先显示"魔法画画中"占位，
+ * 后台每 1.5s 拉最新章 pages，把已生成的页图补进对应 page-card；全有图或 ~30s 兜底停止。
+ */
+function pollDoneImages(){
+  if(!state.current) return;
+  let tries=0;
+  const t=setInterval(async()=>{
+    tries++;
+    try{
+      const b=await (await apiFetch(API+`/books/${state.current.bookId}`)).json();
+      const latest=b.chapters?b.chapters[b.chapters.length-1]:null;
+      if(!latest) return;
+      const pr=await (await apiFetch(API+`/books/${state.current.bookId}/chapters/${latest.id}/pages`)).json();
+      let all=true;
+      for(const p of pr.pages||[]){
+        const card=document.querySelector(`#done-body .page-card[data-pid="${p.id}"]`);
+        if(!card||card.querySelector("img")) continue;
+        if(p.generated_image_uri){
+          card.insertAdjacentHTML("beforeend",`<img src="${imgSrc(p.generated_image_uri)}"/>`);
+          const ph=card.querySelector(".ph"); if(ph) ph.remove();
+        } else all=false;
+      }
+      if(all||tries>20) clearInterval(t); // 全有图 或 ~30s 兜底停止
+    }catch(e){}
+  },1500);
+}
+
+// 启动
+loadAuth().then(()=>{ renderAuth(); loadBooks(); });
+</script>
+</body>
+</html>

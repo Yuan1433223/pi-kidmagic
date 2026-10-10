@@ -9,13 +9,18 @@ import {
 import { Type, type TSchema } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createStoryAgent } from "../src/agent/story-agent.ts";
-import { openDatabase } from "../src/storage/db.ts";
+import { openDatabase, sqliteDbAdapter } from "../src/storage/db.ts";
 import * as repo from "../src/storage/repo.ts";
 
 const registrations: FauxProviderRegistration[] = [];
 afterEach(() => {
 	while (registrations.length > 0) registrations.pop()?.unregister();
 });
+
+/** 内存 SQLite + Db 适配 */
+function memDb() {
+	return sqliteDbAdapter(openDatabase(":memory:"));
+}
 
 /**
  * 固定剧本端到端冒烟（faux provider，离线、确定性、不花钱）：
@@ -76,8 +81,8 @@ describe("故事 agent 阶段机（faux 固定剧本）", () => {
 			),
 		]);
 
-		const db = openDatabase(":memory:");
-		const { agent, runtime, sessionId } = createStoryAgent({ db, model: faux.getModel(), persona: "A" });
+		const db = memDb();
+		const { agent, runtime, sessionId } = await createStoryAgent({ db, model: faux.getModel(), persona: "A" });
 
 		await agent.prompt("我今天画了一只小兔子，它住在大森林里，跑出去玩就迷路了，天快黑了它有点害怕。");
 		expect(runtime.stage).toBe("S3");
@@ -93,7 +98,7 @@ describe("故事 agent 阶段机（faux 固定剧本）", () => {
 		expect(runtime.stage).toBe("S4");
 		expect(runtime.bookId).toBeDefined();
 		expect(runtime.chapterId).toBeDefined();
-		const session = db.prepare("SELECT stage, status, current_book_id FROM sessions WHERE id = ?").get(sessionId) as {
+		const session = (await db.query("SELECT stage, status, current_book_id FROM sessions WHERE id = $1", [sessionId]))[0] as {
 			stage: string;
 			status: string;
 			current_book_id: string | null;
@@ -102,23 +107,21 @@ describe("故事 agent 阶段机（faux 固定剧本）", () => {
 		expect(session.status).toBe("completed");
 
 		// 绘本与页
-		const book = repo.getBook(db, runtime.bookId ?? "");
+		const book = await repo.getBook(db, runtime.bookId ?? "");
 		expect(book?.title).toBe("小兔子找家");
 		expect(book?.status).toBe("done");
-		const pages = repo.listPages(db, runtime.chapterId ?? "");
+		const pages = await repo.listPages(db, runtime.chapterId ?? "");
 		expect(pages.length).toBe(3); // setting / plotbeat / resolution 各一页，均为孩子原话
-		const ratio = repo.childRawRatio(db, runtime.chapterId ?? "");
+		const ratio = await repo.childRawRatio(db, runtime.chapterId ?? "");
 		expect(ratio.ratio).toBe(1);
 
 		// 角色库
-		const character = repo.getCharacterByName(db, "小兔子");
+		const character = await repo.getCharacterByName(db, "小兔子");
 		expect(character).toBeDefined();
 
 		// 对话已落库（家长回放数据源）
-		const messages = db
-			.prepare("SELECT COUNT(*) AS n FROM session_messages WHERE session_id = ?")
-			.get(sessionId) as { n: number };
-		expect(messages.n).toBeGreaterThan(0);
+		const messages = (await db.query("SELECT COUNT(*) AS n FROM session_messages WHERE session_id = $1", [sessionId]))[0] as { n: unknown };
+		expect(Number(messages.n)).toBeGreaterThan(0);
 	});
 
 	it("缺口追问最多 2 轮：超过上限后即使仍有缺口也进入概括", async () => {
@@ -138,8 +141,8 @@ describe("故事 agent 阶段机（faux 固定剧本）", () => {
 			fauxAssistantMessage("那我们先用你讲的这些把故事整理出来，以后还能再补哦。"),
 		]);
 
-		const db = openDatabase(":memory:");
-		const { agent, runtime } = createStoryAgent({ db, model: faux.getModel() });
+		const db = memDb();
+		const { agent, runtime } = await createStoryAgent({ db, model: faux.getModel() });
 
 		await agent.prompt("有一只小兔子。");
 		await agent.prompt("在一个地方。");
@@ -168,8 +171,8 @@ describe("故事 agent 阶段机（faux 固定剧本）", () => {
 			fauxAssistantMessage("好的"),
 		]);
 
-		const db = openDatabase(":memory:");
-		const { agent } = createStoryAgent({ db, model: faux.getModel() });
+		const db = memDb();
+		const { agent } = await createStoryAgent({ db, model: faux.getModel() });
 		agent.state.tools = [...agent.state.tools, dangerous];
 
 		await agent.prompt("帮我执行 shell");

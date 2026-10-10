@@ -30,10 +30,11 @@ export function createIngestAssetsTool(deps: ToolDeps): AgentTool<typeof paramet
 				if (!runtime.pendingAssetIds.includes(id)) runtime.pendingAssetIds.push(id);
 			}
 			if (params.clusterConfirmed === true) {
-				const rows = db
-					.prepare("SELECT id FROM asset_clusters WHERE session_id = ? AND confirmed = 0")
-					.all(runtime.sessionId) as { id: string }[];
-				for (const row of rows) confirmCluster(db, row.id);
+				const rows = (await db.query(
+					"SELECT id FROM asset_clusters WHERE session_id = $1 AND confirmed = 0",
+					[runtime.sessionId],
+				)) as unknown as { id: string }[];
+				for (const row of rows) await confirmCluster(db, row.id);
 				return textResult("好嘞，这些角色、场景和道具都整理好啦！");
 			}
 			return textResult(

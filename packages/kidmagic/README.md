@@ -7,7 +7,7 @@
 
 > **AI 可见度低，孩子主导度高。** 故事的情节、角色、结局由孩子产出，Agent 只做倾听、提问与连接词整理，绝不替孩子编故事。
 
-本包是整条链路中可独立运行、可测试的领域内核：引导状态机、故事域工具、作品库与系统提示词。语音、前端与图生图在路线图上分阶段接入。
+本包是整条链路的领域内核 + 工作台服务端：引导状态机、故事域工具、作品库、HTTP server 与 H5 工作台。语音（ASR/TTS）已部分接入（ASR 通，TTS 调音色中）。
 
 ---
 
@@ -22,7 +22,8 @@
 - [Agent 工具](#agent-工具)
 - [作品库](#作品库)
 - [主导性验收](#主导性验收)
-- [API 参考](#api-参考)
+- [工作台 HTTP API](#工作台-http-api)
+- [包 API 参考](#包-api-参考)
 - [快速开始](#快速开始)
 - [测试](#测试)
 - [扩展点与路线图](#扩展点与路线图)
@@ -51,10 +52,10 @@ Kidmagic 不做又一个「AI 一键生成故事」的玩具。它把一次创�
 
 | 层 | 复用的 Pi 能力 | 本包自建 |
 |---|---|---|
-| Agent 运行时 | `pi-agent-core`：Agent 循环、细粒度事件流、`beforeToolCall` / `finishTurn` 钩子、工具执行 | 引导状态机、阶段裁决、白名单闸门、消息落库 |
-| 模型与多模态 | `pi-ai`：多 provider 路由、图片输入、图生图、faux 测试 provider | 故事域提示词、人设 A/B、固定剧本 demo |
-| 会话持久化 | `pi-session-backend-sqlite-node`（路线图接入） | 作品库十张表（`node:sqlite`） |
-| 工程范式 | `pi-coding-agent` 的工具装配 / 钩子组织方式（仅参考，不引其代码） | 依赖注入工具工厂、离线确定性测试 |
+| Agent 运行时 | `pi-agent-core`：Agent 循环、事件流、`beforeToolCall` / `finishTurn` 钩子、工具执行 | 引导状态机、阶段裁决、白名单闸门、消息落库 |
+| 模型与多模态 | `pi-ai`：多 provider 路由、图片输入、图生图、faux 测试 provider | 故事域提示词、人设 A/B、图生图封装、固定剧本 demo |
+| 会话持久化 | — | 作品库 15 张表（PostgreSQL，repo 全异步） |
+| 工程范式 | `pi-coding-agent` 的工具装配 / 钩子组织（仅参考，不引代码） | 依赖注入工具工厂、离线确定性测试、HTTP server + H5 |
 
 依赖边界是硬约束：只 import 上游包的**顶层公开导出**，不引用 `src/` 内部路径，不复制上游代码。需要上游缺失的通用能力时，走 issue / PR 回流。
 
@@ -62,9 +63,11 @@ Kidmagic 不做又一个「AI 一键生成故事」的玩具。它把一次创�
 
 ## 环境要求
 
-- Node.js `>= 22.19.0`（依赖内置的 [`node:sqlite`](https://nodejs.org/api/sqlite.html)，当前为实验特性，运行时仅有一条 ExperimentalWarning，无需 flag）
+- Node.js `>= 22.19.0`（`node:sqlite` 仅用于离线测试/脚本，实验特性仅一条警告；推荐 22.23.x）
 - npm 10+
-- 运行真实模型 demo 需要 OpenRouter API Key（离线测试不需要）
+- **PostgreSQL 18+**：作品库（`DATABASE_URL`，见 `.env`；云上走 docker compose 起 pg）
+- **Redis**（BullMQ 图生图异步队列，P0-2）：本地用 Memurai 提供 Redis 兼容服务（`localhost:6379`）；不可用时图生图自动降级为同步，server 照常跑
+- 真机对话 / 视觉理解 / 图生图需要百炼专属实例或套餐的 key（离线测试不需要）
 
 ---
 
@@ -73,34 +76,57 @@ Kidmagic 不做又一个「AI 一键生成故事」的玩具。它把一次创�
 ```
 packages/kidmagic/
 ├── package.json
-├── tsconfig.json              # 开发/类型检查（含 scripts、test）
-├── tsconfig.build.json        # 产物构建（仅 src）
-├── AGENTS.md                  # 二开规范与领域上下文（给协作者与 AI coding）
+├── tsconfig.json / tsconfig.build.json
+├── AGENTS.md                  # 二开规范 + 工程地图（给协作者与 AI coding）
+├── README.md
+├── .env / .env.example        # 模型 key 等（.env 已 gitignore）
+├── public/
+│   ├── index.html             # H5 工作台前端（单文件内联 CSS/JS，儿童风 token + emoji + 魔法装饰层）
+│   ├── admin.html             # P0-6 管理员后台页
+│   ├── manifest.webmanifest   # PWA
+│   └── icon.svg               # PWA 图标
+├── deploy/                    # 云上部署（Dockerfile / docker-compose.yml / nginx / env.production）
 ├── scripts/
-│   └── demo-script.ts         # 固定剧本 demo（真实模型，无 ASR）
+│   ├── demo-script.ts         # 单章真机 demo（固定剧本）
+│   ├── demo-continuation.ts   # 章节续写真机 demo
+│   └── smoke-image.ts         # 图生图真机冒烟
 ├── src/
 │   ├── index.ts               # 包入口，统一导出
+│   ├── server.ts              # node:http 工作台服务端（JSON API + 静态页）
+│   ├── auth.ts                # P0-3 账号：scrypt 密码哈希 + HMAC JWT（零第三方）
 │   ├── agent/
 │   │   ├── stages.ts          # 阶段/人设/缺口类型、运行态、常量
-│   │   ├── prompts.ts         # 人设 A/B + 核心规则 + 分阶段指令
-│   │   └── story-agent.ts     # 装配：白名单闸门 + finishTurn 阶段机 + 消息持久化
+│   │   ├── prompts.ts         # 人设 A/B + 核心规则 + 分阶段指令 + 续写前缀
+│   │   ├── story-agent.ts     # 装配：白名单闸门 + finishTurn 阶段机 + 消息持久化
+│   │   ├── summary.ts         # 前情提要摘要 buildRecapSummary
+│   │   ├── image-prompt.ts    # P0-5 结构化角色/场景卡 + 每帧自包含 prompt
+│   │   ├── consistency.ts     # P0-5 一致性 schema 校验
+│   │   ├── asset-context.ts   # 素材→agent 上下文注入
+│   │   ├── reference-asset.ts # 主角参考图（孩子原画）
+│   │   └── qwen-dedicated.ts  # 百炼专属实例 provider（id qwen-dedicated）
 │   ├── tools/
-│   │   ├── types.ts           # ToolDeps、textResult/imageResult
-│   │   ├── index.ts           # createKidmagicTools 工厂 + 白名单
-│   │   ├── ingest-assets.ts
-│   │   ├── magic-render.ts
-│   │   ├── save-story-element.ts
-│   │   ├── build-character-card.ts
-│   │   ├── check-skeleton.ts
-│   │   ├── save-book-title.ts
-│   │   └── start-book-generation.ts
+│   │   ├── types.ts / index.ts
+│   │   ├── ingest-assets.ts / analyze-ingest-batch.ts
+│   │   ├── magic-render.ts / save-story-element.ts
+│   │   ├── build-character-card.ts / check-skeleton.ts / get-world-state.ts
+│   │   ├── save-book-title.ts / start-book-generation.ts / paginate.ts / world-state.ts
+│   ├── vision/
+│   │   ├── visual-understand.ts  # 图片 → 结构化实体（qwen 多模态）
+│   │   └── ingest-cluster.ts     # 素材理解 + 聚类服务（工具 & server 共用）
+│   ├── image/
+│   │   ├── dashscope-image.ts    # 通义万相图生图封装（同步/异步兼容）
+│   │   └── image-prompt.ts
+│   ├── jobs/
+│   │   ├── image-jobs.ts          # 章节配图核心（worker/同步共用，P0-5 buildWorldCards）
+│   │   └── queue.ts               # BullMQ Queue/Worker 工厂（Redis）
+│   ├── voice/
+│   │   ├── tencent-asr.ts         # 腾讯云一句话识别（已通）
+│   │   └── volc-tts.ts            # 火山单流 SSE TTS（调音色中）
+│   ├── util/save-image.ts         # 图生图结果下载落盘（防外链过期）
 │   └── storage/
-│       ├── schema.ts          # P0 十张表 DDL
-│       ├── db.ts              # openDatabase（node:sqlite）
-│       └── repo.ts            # 落库 helper 与主导性验收查询
-└── test/
-    ├── storage.test.ts        # 作品库与验收口径单测
-    └── story-agent.smoke.test.ts  # faux 驱动的阶段机端到端冒烟
+│       ├── db-pg.ts / schema-pg.ts / repo.ts   # PostgreSQL 作品库（15 表，repo 全异步）
+│       └── db.ts / schema.ts                    # SQLite（sqliteDbAdapter 供离线测试/脚本）
+└── test/                       # vitest 离线测试（faux provider + :memory: db，28 用例）
 ```
 
 ---
@@ -108,42 +134,42 @@ packages/kidmagic/
 ## 架构
 
 ```
-                         孩子（语音 / 文本 / 素材）
+         孩子（H5 工作台：上传画作 → 确认聚类 → 打字机对话 → 完成感 → 翻页回看绘本）
                                   │
                                   ▼
- ┌──────────────────────────────────────────────────────────────┐
- │                         前端 / 语音链路                         │
- │        （P0 由固定剧本脚本替代；ASR/TTS、HTTP server 见路线图）      │
- └──────────────────────────────────────────────────────────────┘
-                                  │ agent.prompt(text, images?)
+        node:http server（src/server.ts）
+          静态 H5（/、/admin、/manifest、/icon.svg）
+          /api/auth/*（注册/登录/me/children）· /api/voice/*（ASR/TTS）
+          /api/admin/*（管理后台，设 KIDMAGIC_ADMIN_PASSWORD 启用）
+          /books·/books/:id·/uploads·/sessions/:id/messages·…
+                                  │ agent.prompt / 工具 execute
                                   ▼
- ┌──────────────────────────────────────────────────────────────┐
- │                    createStoryAgent（pi-agent-core）            │
- │                                                                │
- │  systemPrompt = buildSystemPrompt(persona)   人设 A/B + 铁律     │
- │                                                                │
- │  beforeToolCall  ── 白名单闸门：7 个工具之外一律 block+terminate │
- │                                                                │
- │  tools = createKidmagicTools({ db, runtime })  依赖注入          │
- │                                                                │
- │  finishTurn     ── 工具驱动的阶段裁决（S0→S4，见下节）            │
- │                                                                │
- │  subscribe      ── message_end → session_messages 落库          │
- └───────────────┬───────────────────────────────┬────────────────┘
-                 │ streamFn                       │ 工具 execute
-                 ▼                                ▼
-        pi-ai 多 provider 路由            ┌──────────────────────┐
-        （OpenRouter / faux …）            │   作品库（node:sqlite） │
-                                          │  assets / elements /  │
-                                          │  characters / books / │
-                                          │  chapters / pages …   │
-                                          └──────────────────────┘
+ ┌──────────────────────────────────────────────────────────┐
+ │                createStoryAgent（pi-agent-core）           │
+ │   systemPrompt = buildSystemPrompt(persona) 人设 A/B + 铁律 │
+ │   beforeToolCall ── 白名单闸门（9 工具之外 block+terminate） │
+ │   tools = createKidmagicTools({ db, runtime }) 依赖注入      │
+ │   finishTurn ── 工具驱动阶段裁决（S0→S4）                     │
+ │   subscribe ── message_end → session_messages 落库          │
+ └──────────────┬──────────────────────────┬─────────────────┘
+        streamFn │                          │ 工具 execute
+                ▼                          ▼
+     pi-ai 多 provider 路由         ┌──────────────────────┐
+     （qwen-dedicated / 套餐 /      │ 作品库（PostgreSQL） │
+       OpenRouter / faux）         │  15 张表              │
+       视觉理解：qwen 多模态        └──────────▲───────────┘
+       图生图：通义万相                       │
+              ▲                              │
+              └── BullMQ 异步队列 ───────────┘
+       start_book_generation 文字同步落地 → 配图入队后台串行生成
+       → 画布边生成边铺页；队列不可用自动降级同步（P0-2）
 ```
 
 两条关键设计：
 
 - **阶段机不依赖解析模型文本**。模型「说了什么」不可靠，「调用了哪个工具、传了什么结构化参数」才可靠。阶段切换由 `finishTurn` 钩子根据本回合工具结果裁决。
-- **安全默认拒绝**。Agent 只能调用 7 个显式白名单工具，任何额外工具（包括 Pi 默认的 shell 类工具）在执行前即被拦截并终止该回合。
+- **安全默认拒绝**。Agent 只能调用白名单内的 9 个工具，任何额外工具在执行前即被拦截并终止该回合。
+- **视觉理解 / 图生图走独立服务**（`src/vision`、`src/image`、`src/jobs`），工具与 server 共用同一逻辑。
 
 ---
 
@@ -162,7 +188,7 @@ packages/kidmagic/
                               └──────────────► S4                       → 孩子同意
                                                                    start_book_generation
                                                                           │ end ▼
-                                                                     第一章绘本落库
+                                                                     第一章绘本落库（含配图）
 ```
 
 | 阶段 | 名称 | 主要工具 | 出口 |
@@ -176,90 +202,131 @@ packages/kidmagic/
 约束：
 
 - **大框架完整优先于细节发散**。缺口只认四类：`character` / `setting` / `conflict` / `resolution`；情绪、细节等「血肉」不主动追问。
-- **追问上限 2 轮**（`MAX_GAP_ROUNDS = 2`）。超过后即使仍有缺口也进入 S4，用已有内容收尾，避免把孩子问烦、问跑题。
-- **一次只问一个问题**，并遵循「主角 → 在哪里 → 发生了什么 → 最后怎样」的优先级（由提示词约束）。
-- **三级降级**（孩子不愿讲时）：换问法 → 给结合前文的选项 → 「今天先到这儿，已帮你存好」。P0 写入提示词，`runtime.fallbackLevel` 字段已为自动状态机预留。
+- **追问上限 2 轮**（`MAX_GAP_ROUNDS = 2`）。超过后即使仍有缺口也进入 S4。
+- **一次只问一个问题**，遵循「主角 → 在哪里 → 发生了什么 → 最后怎样」的优先级。
+- **三级降级**（孩子不愿讲时）：换问法 → 给结合前文的选项 → 「今天先到这儿，已帮你存好」。
 
 ---
 
 ## Agent 工具
 
-工具由 `createKidmagicTools({ db, runtime })` 构造，参数 schema 使用 TypeBox，模型按 function-calling 协议调用。
+工具由 `createKidmagicTools({ db, runtime })` 构造，参数 schema 用 TypeBox，模型按 function-calling 协议调用。
 
 | 工具 | 参数 | 阶段 | 副作用 |
 |---|---|---|---|
 | `ingest_assets` | `assetIds: string[]`<br>`clusterConfirmed?: boolean` | S0–S1 | 素材入库确认 / 半自动聚类确认闭环 |
-| `magic_render` | `emotion: 'happy'\|'curious'\|'proud'`<br>`sceneHint?: string` | S1 | 魔法棒轻量反馈（P0 仅语义，动效在前端） |
-| `save_story_element` | `elementType: 'character'\|'setting'\|'plotbeat'\|'emotion'\|'detail'\|'resolution'`<br>`content: string`（整理后内容）<br>`childWords: string`（孩子原话）<br>`orderIdx?: number` | S1–S3 | 写入 `story_elements`，**`childWords` 是主导性红线** |
-| `build_character_card` | `name: string`<br>`appearance: string`<br>`personality: string`<br>`catchphrase?: string` | S1–S2 | upsert 进跨故事角色库，必要时关联当前绘本主角 |
+| `analyze_ingest_batch` | `batchNo: number` | S1 | 对该批素材做视觉理解 + 聚类（薄壳 → `ingest-cluster.ts`） |
+| `magic_render` | `emotion: 'happy'\|'curious'\|'proud'`<br>`sceneHint?: string` | S1 | 魔法棒轻量反馈（语义层；动效在前端） |
+| `save_story_element` | `elementType: 'character'\|'setting'\|'plotbeat'\|'emotion'\|'detail'\|'resolution'`<br>`content`<br>`childWords`（孩子原话）<br>`orderIdx?` | S1–S3 | 写入 `story_elements`，**`childWords` 是主导性红线** |
+| `build_character_card` | `name`<br>`appearance`<br>`personality`<br>`catchphrase?` | S1–S2 | upsert 进跨故事角色库 |
 | `check_skeleton` | `gaps: ('character'\|'setting'\|'conflict'\|'resolution')[]` | S2 | 写 `runtime.lastGaps`，驱动阶段裁决 |
-| `save_book_title` | `title: string` | S4 | 创建/命名绘本 |
-| `start_book_generation` | `artworkId: string`（封面素材）<br>`title: string`<br>`chapterNo?: number` | S4 | 建书 → 建章 → 逐元素排版成页 → 标记完成，**一次创作的终点** |
+| `save_book_title` | `title: string` | S4 | 创建/命名绘本（不覆盖已有书标题） |
+| `get_world_state` | （无） | S1–S4 | 查询世界状态：角色/场景/本书全部章节前情；续写或不确定时先查，保持连续 |
+| `start_book_generation` | `artworkId`（封面素材）<br>`title`<br>`chapterNo?` | S4 | 建书→建章→逐元素排版成页→配图（BullMQ 队列）→标记完成 |
 
-不暴露给模型、由系统层负责的能力（路线图）：`asr_transcribe`（讯飞儿童 ASR）、`generate_book_page`（图生图）、`persist_session`。
+`start_book_generation` 的关键行为：
 
-`start_book_generation` 的两个 P0 行为值得注意：
+- **原话排版**：每个故事元素优先用 `child_words` 成页（`text_source='child_raw'`），无原话时退为连接词页（`connector`）；无元素时兜底一页并标记 `connector`。
+- **配图（P0-2/P0-5）**：文字页 done 后**串行**为每页生成图；worker 内 `buildWorldCards` 从库重建角色/场景卡 → `validateChapterPage` schema 校验 → 失败单页降级纯文字。队列不可用自动降级同步。
+- **续写**：带 `continuation` 时挂原书（不新建书），按 `chapterNo` 写章节。
 
-- **原话排版**：每个故事元素优先用 `child_words` 成页（`text_source='child_raw'`），无原话时退为连接词页（`connector`）；没有任何元素时兜底产出一页并标记为 `connector`，让主导性验收如实暴露问题。
-- **封面容错**：模型给出的 `artworkId` 若不属于当前会话，回退到本会话最早上传的素材，避免一个不存在的 id 打断闭环。
+不暴露给模型、由系统层负责的能力：`asr_transcribe`（腾讯云，`/api/voice/recognize`）、TTS（`/api/voice/tts`）。
 
 ---
 
 ## 作品库
 
-P0 共 10 张表（DDL 见 `src/storage/schema.ts`），使用 Node 内置 SQLite，无原生编译依赖。
+共 **15 张表**（DDL 见 `src/storage/schema-pg.ts`），**PostgreSQL**（`db-pg.ts` 的 pg.Pool，`repo.ts` 40+ 函数全异步、`$n` 占位、事务级联删书）。离线测试与 demo 脚本用 `db.ts` 的 SQLite 适配（`sqliteDbAdapter`）跑 `:memory:` 库。
 
 | 表 | 职责 |
 |---|---|
-| `assets` | 上传素材（画/照片/其他）+ `ner_entities`（JSON） |
-| `asset_clusters` | 半自动聚类：角色组 / 场景组 / 道具组，`confirmed` 标记孩子是否确认 |
-| `sessions` | 一次创作会话：`stage`、`status`（active/paused/completed）、当前绘本 |
-| `session_messages` | user/assistant/tool 消息留痕，家长回放与后续 ASR 评估的数据源 |
+| `assets` | 上传素材（画/照片）+ `ner_entities`（JSON） |
+| `asset_clusters` | 半自动聚类：角色组/场景组/道具组，`confirmed` 标记孩子是否确认 |
+| `ingest_items` | 素材上传暂存批次（批次原子性、批量≤10、confirm/discard） |
+| `sessions` | 一次创作会话：`stage`、`status`、当前绘本 |
+| `session_messages` | user/assistant/tool 消息留痕（回放与 ASR 评估数据源） |
 | `story_elements` | 结构化故事元素，`child_words` 保留原话 |
 | `characters` | **跨故事共享的本地角色库**（孩子的长期 IP），按 `name` 去重 |
-| `books` | 绘本：标题、封面素材、状态（draft/generating/done） |
+| `books` | 绘本：标题、封面素材、状态（draft/generating/done）、**`user_id/child_id` 归属** |
 | `book_characters` | 绘本 ↔ 角色多对多，`role`（protagonist/supporting） |
-| `chapters` | 章节，`recap_summary` 为续写时的「前情提要」预留 |
-| `book_pages` | 绘本页：`text_source`（child_raw/connector/ai）、原画、`generated_image_uri` |
+| `chapters` | 章节，`recap_summary` 为续写时的「前情提要」，`cover_asset_id` 为章节封面（默认取该章第一页图，可上传替换） |
+| `book_pages` | 绘本页：`text_source`（child_raw/connector）、原画、`generated_image_uri` |
+| `users` | 家长账号（手机号唯一、scrypt 密码哈希、昵称） |
+| `children` | 孩子档案（`user_id` 外键 ON DELETE CASCADE） |
+| `invite_batches` / `invite_codes` | 管理员邀请码批次 + 码（P0-6） |
 
 核心关系：
 
 ```
-characters ──(book_characters, 多对多)── books ──< chapters ──< book_pages
-sessions ──< story_elements
-sessions ──< assets ──< asset_clusters
-sessions ──< session_messages
+users ──< children ──< books ──< chapters ──< book_pages
+characters ──(book_characters)── books
+sessions ──< story_elements / assets / asset_clusters / session_messages
+books ──< ingest_items（上传批次）
+invite_batches ──< invite_codes
 ```
 
 ---
 
 ## 主导性验收
 
-「绘本是不是孩子自己讲出来的」不靠主观判断，而有可查询的口径：
-
-- **原话占比**：`repo.childRawRatio(db, chapterId)` 返回 `{ childRaw, total, ratio }`，即该章页面中 `text_source='child_raw'` 的比例。P0 门槛 **≥ 0.6**。
-- **零新增情节**：AI 只允许添加连接词（有一天 / 后来 / 然后 / 最后），不允许新增事件；系统提示词将此列为铁律，`story_elements` 中无 `child_words` 的情节元素可作为近似检查信号。
+- **原话占比**：`repo.childRawRatio(db, chapterId)` 返回 `{ childRaw, total, ratio }`。P0 门槛 **≥ 0.6**。
+- **零新增情节**：AI 只允许加连接词，`story_elements` 中无 `child_words` 的情节元素可作为近似检查信号。
 
 ---
 
-## API 参考
+## 工作台 HTTP API
+
+`src/server.ts` 提供 node:http 服务（默认 `PORT=8787`，静态 H5 + JSON API）：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/` | H5 工作台首页（`public/index.html`） |
+| GET | `/admin` | 管理员后台页（设 `KIDMAGIC_ADMIN_PASSWORD` 启用） |
+| GET | `/manifest.webmanifest` / `/icon.svg` | PWA 静态资产 |
+| GET | `/health` | 健康检查（含 provider/model） |
+| POST | `/api/auth/register` | 注册（手机号 `^1\d{10}$`、密码≥6、token 30 天） |
+| POST | `/api/auth/login` | 登录 → JWT |
+| GET | `/api/me` | 登录态 + 孩子列表 |
+| POST | `/api/children` | 新建孩子档案 |
+| POST | `/api/voice/recognize` | 腾讯 ASR（16k WAV；不配 key 返回 501） |
+| POST | `/api/voice/tts` | 火山 TTS（不配 key 返回 501；当前音色待调） |
+| POST | `/api/admin/login` | 管理员登录 |
+| GET | `/api/admin/overview` / `users` / `books` / `invite-batches` / `invite-codes` | 管理统计/列表 |
+| POST | `/api/admin/invite-batches` | 生成邀请码批次 |
+| GET | `/books` | 书列表（按 user/child 归属过滤，游客看全部） |
+| GET | `/books/:id` | 书详情（章节列表） |
+| POST | `/books` | 新建书 + 会话 `{title}` → `{bookId, sessionId}` |
+| POST | `/books/:id/continue` | 续写最新章之后（无章节则首章） |
+| PATCH / DELETE | `/books/:id` | 重命名 / 删除整本书（级联） |
+| PATCH | `/books/:id/chapters/:cid` | 章节改名（`{title}`） |
+| DELETE | `/books/:id/chapters/:cid` | 删除章节（级联删该章绘本页） |
+| POST | `/books/:id/chapters/:cid/cover` | 章节封面上传（base64）→ `{cover_asset_id}` |
+| POST | `/books/:id/uploads` | base64 上传图片（每批 ≤10）→ `{batchNo, items}` |
+| POST | `/books/:id/uploads/confirm` / `discard` | 确认 / 丢弃一批 |
+| POST | `/books/:id/uploads/:batch/analyze` | 视觉理解 + 聚类 → `{ok, labels}` |
+| POST | `/sessions/:id/messages` | 孩子说话 → `{reply, stage, gapRoundCount, feedback}` |
+| GET | `/uploads/:file` | 取上传原图 / 图生图页图（防路径穿越） |
+| GET | `/books/:id/assets` | 整书角色/场景资产 + 角色卡详情 |
+| GET | `/books/:id/materials` | 素材碎片（已确认上传原图） |
+| GET | `/books/:id/latest-chapter/pages` | 最新一章页面（画布轮询 / 完成页「翻一翻」） |
+| GET | `/sessions/:id/assets` | 会话角色/场景资产 |
+
+对话接口当前为非流式 JSON，前端用**打字机动画**模拟流式（真 SSE 后置）。
+
+---
+
+## 包 API 参考
 
 包入口 `@earendil-works/pi-kidmagic`：
 
 ```ts
-// 装配一个故事 Agent
-import { createStoryAgent, openDatabase, repo } from "@earendil-works/pi-kidmagic";
+import { createStoryAgent, openPgDatabase, repo } from "@earendil-works/pi-kidmagic";
 
-const db = openDatabase("./kidmagic.db"); // 默认 ":memory:"
+const db = await openPgDatabase(process.env.DATABASE_URL!);
 const { agent, runtime, sessionId } = createStoryAgent({
-  db,
-  model,                 // pi-ai 的 Model 实例
-  persona: "A",          // "A" 琪琪老师（默认） | "B" 动画伙伴
-  // sessionId?,          // 传入则复用已有会话，否则新建并落库
-  // streamFn?,           // 默认 pi-ai/compat 的 streamSimple；真实模型传 models.streamSimple.bind(models)
-  // persistMessages?,    // 默认 true，消息落 session_messages
+  db, model, persona: "A",
+  // continuation?: { bookId, recapSummary, chapterNo }  // 续写
 });
-
 await agent.prompt("我今天画了一只小兔子……"); // 第二参可传 ImageContent[]
 ```
 
@@ -267,125 +334,91 @@ await agent.prompt("我今天画了一只小兔子……"); // 第二参可传 I
 
 | 选项 | 类型 | 说明 |
 |---|---|---|
-| `db` | `DatabaseSync` | 作品库句柄 |
+| `db` | `Db` | 作品库句柄（`openPgDatabase` 连 PG；测试/脚本用 `sqliteDbAdapter(openDatabase(":memory:"))`） |
 | `model` | `Model<TApi>` | pi-ai 模型实例 |
 | `persona` | `"A" \| "B"` | 人设，默认 `"A"` |
 | `sessionId` | `string` | 复用会话；省略则新建 |
+| `continuation` | `{ bookId; recapSummary; chapterNo? }` | 续写（recapSummary 为空则按首章开始） |
 | `streamFn` | `StreamFn` | 流式函数，默认 compat 实现 |
 | `persistMessages` | `boolean` | 是否落消息，默认 `true` |
-
-返回 `{ agent, runtime, sessionId }`：`agent` 是标准 Pi `Agent`（`prompt` / `subscribe` / `state` / `waitForIdle`），`runtime` 是当前会话的进程内运行态。
-
-### 运行态与常量（`src/agent/stages.ts`）
-
-```ts
-type StoryStage    = "S0" | "S1" | "S2" | "S3" | "S4";
-type Persona       = "A" | "B";
-type FallbackLevel = "none" | "rephrase" | "choice" | "pause";
-type SkeletonGap   = "character" | "setting" | "conflict" | "resolution";
-
-interface StoryRuntime {
-  sessionId: string;
-  stage: StoryStage;
-  persona: Persona;
-  fallbackLevel: FallbackLevel;
-  gapRoundCount: number;     // 当前缺口追问轮数
-  lastGaps: SkeletonGap[];   // 最近一次框架缺口
-  pendingAssetIds: string[];
-  bookId?: string;
-  chapterId?: string;
-}
-
-const MAX_GAP_ROUNDS = 2;        // 缺口追问上限
-const MAX_FALLBACK_RETRIES = 2;  // 降级重试上限（预留）
-```
-
-### 工具工厂与提示词
-
-```ts
-createKidmagicTools(deps: { db, runtime }): AgentTool<TSchema, unknown>[];
-KIDMAGIC_TOOL_NAMES: readonly string[];   // 白名单
-buildSystemPrompt(persona: "A" | "B"): string;
-```
-
-### 存储层（`repo` namespace）
-
-会话 / 素材：`createSession` · `updateSessionStage` · `insertAsset` · `upsertCluster` · `confirmCluster` · `insertMessage`
-故事元素 / 角色：`insertStoryElement` · `upsertCharacter` · `getCharacterByName`
-绘本：`createBook` · `setBookTitle` · `linkBookCharacter` · `createChapter` · `insertBookPage` · `markBookDone`
-查询 / 验收：`getBook` · `listPages` · `listStoryElements` · `childRawRatio`
 
 ---
 
 ## 快速开始
 
-本包位于 Pi monorepo 中，依赖上游包的构建产物（`dist/` 不入库）。首次检出后，需在仓库根按依赖顺序构建 `pi-telemetry → pi-chord → pi-ai → pi-agent-core → pi-session-backend-sqlite-node`（其中 `pi-ai` 需先运行模型目录拉取脚本 `hydrate:model-data`）。
-
-以下命令均在仓库根用 workspace 形式运行（也可在 `packages/kidmagic` 内直接 `npm run <script>`）：
+本包位于 Pi monorepo 中，依赖上游包构建产物（`dist/` 不入库）。首次检出后在仓库根按依赖顺序构建上游包。以下命令在仓库根用 workspace 形式运行：
 
 ```bash
-# 类型检查（覆盖 src / scripts / test）
+# 类型检查 / 离线测试（faux + :memory:，不触网不计费）
 npm run check --workspace=@earendil-works/pi-kidmagic
-
-# 构建产物到 dist/
-npm run build --workspace=@earendil-works/pi-kidmagic
-
-# 离线测试（faux provider + 内存库，不触网、不计费）
-npm run test --workspace=@earendil-works/pi-kidmagic
+npm run test  --workspace=@earendil-works/pi-kidmagic
 ```
 
-跑真实模型的固定剧本 demo（会产生 OpenRouter 调用费用）：
+真机（需 `.env`，见 `packages/kidmagic/.env.example`）：
 
-```powershell
-# PowerShell
-$env:OPENROUTER_API_KEY = "sk-or-..."
-$env:OPENROUTER_MODEL   = "google/gemini-2.5-flash"   # 可选，默认即此
-$env:KIDMAGIC_PERSONA   = "A"                          # 可选，A / B
+```bash
 npm run demo --workspace=@earendil-works/pi-kidmagic
+npm run demo:continuation --workspace=@earendil-works/pi-kidmagic
+npm run smoke:image --workspace=@earendil-works/pi-kidmagic
+
+# 启动工作台（在 packages/kidmagic 内）
+cd packages/kidmagic && npm run server   # http://localhost:8787
 ```
 
-demo 会模拟上传两张素材、逐句给出一段「缺结尾」的孩子台词，打印每次工具调用与最终绘本（页内容、原话占比、故事元素、角色库），并在包目录生成 `kidmagic-demo.db`。
+真机对话 / 视觉理解 / 图生图走百炼（`.env` 的 `QWEN_BASE_URL` + `QWEN_API_KEY`/`DASHSCOPE_API_KEY`），provider 选择：专属实例 > 公共套餐 > OpenRouter。
 
 ---
 
 ## 测试
 
-测试全部离线、确定性，禁止真实网络与密钥：
-
-- **模型**使用 pi-ai 的 faux provider（`registerFauxProvider` / `fauxAssistantMessage` / `fauxToolCall`，来自 `@earendil-works/pi-ai/compat`），按模型被消费的顺序排队响应；
-- **数据库**统一使用 `openDatabase(":memory:")`，每个用例独立。
+测试全部离线、确定性，禁止真实网络与密钥（模型用 pi-ai faux provider，数据库统一 `:memory:`）。
 
 | 文件 | 覆盖 |
 |---|---|
-| `test/storage.test.ts` | 十表初始化、角色库去重、绘本–角色多对多、`childRawRatio` 口径、原话留存 |
-| `test/story-agent.smoke.test.ts` | S0→S4 完整闭环并生成原话章节、缺口追问 2 轮上限、非白名单工具被拦截且不执行 |
+| `test/storage.test.ts` | 15 表初始化、角色库去重、绘本–角色多对多、`childRawRatio` 口径、账号/孩子 |
+| `test/story-agent.smoke.test.ts` | S0→S4 完整闭环、缺口追问 2 轮上限、非白名单工具被拦截 |
+| `test/continuation.test.ts` | 章节续写闭环（新 session + 前情提要、章节号正确、书标题不覆盖） |
+| `test/ingest-cluster.test.ts` | 素材理解 + 聚类服务逻辑 |
+| `test/image-gen.test.ts` | 图生图封装（同步/异步、失败降级、无 key 不触网） |
 
-新增产品规则（阶段切换、工具约束、验收口径）时，应同步补充对应断言。
+当前 **28 用例全绿**（`npx tsc -p tsconfig.json --noEmit` = 0）。新增产品规则应同步补断言。
 
 ---
 
 ## 扩展点与路线图
 
-架构为以下能力预留了明确位置，按阶段解锁：
+已完成：
 
-- **语音链路（ASR/TTS）**：ASR 计划接入讯飞儿童识别（儿童口音是硬门槛），作为系统层工具 `asr_transcribe`，不进模型白名单；TTS 音色在交互定稿后接入。`agent.prompt` 已支持文本之外的 `ImageContent`。
-- **素材多模态理解与半自动聚类**：`assets.ner_entities`、`asset_clusters` 表与 `ingest_assets` / `upsertCluster` / `confirmCluster` 已就位；P0 不做真实 NER，P1 接入多模态模型识别实体，聚类结果仍需孩子「对吗？」确认后才 `confirmed=1`。
-- **绘本配图（图生图）**：`book_pages.image_asset_id` / `generated_image_uri` 与 `imageResult()` 已预留；pi-ai 当前内置图生图走 OpenRouter（gemini-image）。计划为封面用原画、内页图生图并尝试主角一致性，失败一律退回原画排版，不阻塞出片。
-- **二次使用与留存（P1）**：「我的故事集」、章节续写、新的开始。续写采用**新 session + 注入 `chapters.recap_summary` 前情提要**，不续旧 session；「老角色」通过角色库取出角色卡作为上下文带入，新角色继续沉淀进 `characters`。这是产品生命周期与孩子长期 IP 的承载。
-- **三级降级自动状态机**：`runtime.fallbackLevel` 与 `MAX_FALLBACK_RETRIES` 已预留，P0 仅靠提示词，待真实语料校准后再下沉为确定性逻辑。
-- **会话持久化**：接入 `pi-session-backend-sqlite-node` 管理 Agent 对话状态，与作品库分工（前者管对话运行态，后者管创作产物）。
-- **载体**：H5 前端 + Node 单服务（移动端优先），魔法棒反馈等轻量动效在前端实现。
-- **账号化（P2）**：P0/P1 角色库与作品库为设备本地 SQLite，账号与云同步在 P2。
+- **P0** 单次完整流程闭环
+- **P1-B** 章节续写（新 session + 前情提要注入，挂同一本书）
+- **P1-A** 工作台 server + H5（首页/起名/书详情/画室/对话/完成感/回看）+ 视觉理解聚类 + 图生图接入 + 画布「生长」+ 资产弹窗 + 书列表增删改
+- **P1/P2/P3** 图生图世界状态注入、主角参考图、对话侧连续（`get_world_state` + 素材注入）
+- **429 限流修复**；**图生图结果落盘**（`saveRemoteImage` 防外链过期）
+- **P0-1** 存储 → PostgreSQL（repo 全异步，SQLite 适配保留）
+- **P0-2** BullMQ 图生图异步化（job data 不含敏感信息，Redis 降级同步）
+- **P0-3** 账号体系（家长手机号+密码 + 孩子档案 + JWT + 归属过滤），游客免登录保留
+- **P0-4 部分** 语音：腾讯 ASR 已通（`/api/voice/recognize`）；火山 TTS 待换可用音色
+- **P0-5** 一致性：角色/场景卡 + 每帧自包含 prompt + schema 校验
+- **P0-6** 前端上线 + 家长端（翻页回放 / 家长书架 / 移动端健壮性 / PWA / fetch 全局兜底）+ 魔法装饰层（旧版 UI 复用）+ 管理员后台 + 部署骨架
+
+待做：
+
+- **语音 TTS**：火山控制台换 `seed-tts-2.0` 匹配音色后接通；前端语音按钮打通。
+- **对话真 SSE**：当前打字机动画模拟。
+- **主角一致性验收自动化**：P0-5 世界卡已落地，可加同角色跨页一致性自动断言。
+- **视觉理解细化**：实体 label → 结构化外观描述，喂给 `build_character_card`。
+- **账号深化**：短信验证码、游客书迁移到账号、多孩子隔离到多租户级。
 
 ---
 
 ## 已知限制
 
-- 当前 demo 为**无 ASR 的固定剧本**，用于验证「孩子愿意讲 + 引导有效 + 绘本保留主导性」三件事，语音与前端尚未接入。
-- 三级降级、「生成前必须获得孩子明确同意」目前由系统提示词约束，尚无工具层硬保证；在模型服从度未经真实语料验证前，这两点是优先观察项。
-- P0 不调用图生图，绘本页只做原话文本排版，页图字段为空。
-- `node:sqlite` 在 Node 22 线上仍标记为实验特性（仅警告）；升级 Node 大版本时需回归。
-- 人设 B 中的参考卡通形象为注册商标，仅可用于内部 demo，正式上线必须替换为原创形象。
+- 当前交互以文本输入 + 打字机回复为主，语音链路 ASR 已通、TTS 调音色中。
+- 三级降级、「生成前必须获得孩子明确同意」目前由系统提示词约束，尚无工具层硬保证。
+- 图生图对**过于抽象/无具象元素的原话**可能降级为纯文字页（不阻塞出片）；配图质量与主角一致性待真机复测调优。
+- 本地需 **PostgreSQL + Redis（Memurai）** 才能跑工作台完整异步配图；Redis 不可用时图生图降级同步。
+- 本地 Windows 曾尝试 Docker/Podman 因系统虚拟化问题不可用，容器仅作**云上标准部署**（deploy/docker-compose）。
+- 人设 B 中参考卡通形象为注册商标，仅限内部 demo，正式上线必须替换为原创形象。
 
 ---
 

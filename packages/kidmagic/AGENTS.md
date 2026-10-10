@@ -1,179 +1,125 @@
-# Kidmagic 二开开发规范（中文版）
+# Kidmagic 开发说明（中文）
 
-> 本文件改编自上游 `earendil-works/pi` 的 `AGENTS.md`，针对 `packages/kidmagic` 二开场景本地化与裁剪。
-> 中文、面向本包开发。上游规范与本文件冲突时，以不违背上游精神、且更贴合本包实际情况的写法为准。
-> 对 AI coding 与协作者而言，这是本包开发的**唯一权威规范 + 领域上下文**。
+> 面向 **4–8 岁孩子** 的 AI 故事机：孩子画素材 + 口头讲故事 → AI 组织成章节绘本。
+> 基于 [earendil-works/pi](https://github.com/earendil-works/pi)（MIT，Node/TS monorepo）二开。
+> 上游 Pi 包（agent-core / ai 等）当作黑盒，**只走顶层公开导出，不 import 其 `src` 内路径**。
 
----
+## 产品红线（最重要）
 
-## 1. 项目定位
+- **孩子主导性 ≥ 60%**：绘本每页文字优先用孩子原话（`text_source='child_raw'`），AI 只允许加连接词，**禁止新增情节**。
+- 验收依据：`book_pages.text_source` / `story_elements.child_words` 是主导性判定来源，`childRawRatio`（repo.ts）反映占比。
 
-- **Kidmagic = 儿童创造力「故事机」**。基于 Pi 二开：孩子把画作/素材讲成故事，生成**章节化**的故事绘本。
-- **复用 Pi（拿来主义）**：`@earendil-works/pi-agent-core`（Agent 循环/事件流/finishTurn/工具执行）、`@earendil-works/pi-ai`（多模型路由/图片输入/图生图）、`@earendil-works/pi-session-backend-sqlite-node`（会话持久化）。
-- **自建（独立层）**：引导状态机（S0-S4）、7 个 AgentTool、HTTP server、作品库 storage、prompt（人设 A/B）、讯飞 ASR 接入、绘本生成管线、二次使用模块（P1）。
-- **载体**：Web 应用、移动端优先，H5 前端 + Node 单服务后端。
+## 技术栈与目录（工程地图）
 
----
+自开发包：`packages/kidmagic`（独立 workspace）。关键源码职责：
 
-## 2. 依赖边界（最高优先级，违反即违反设计意图）
+| 路径 | 职责 |
+|---|---|
+| `src/agent/stages.ts` | S0–S4 阶段机 + 运行态 `StoryRuntime`（`stage/persona/fallbackLevel/gapRoundCount/lastGaps/pendingAssetIds/bookId/chapterId/continuationChapterNo`） |
+| `src/agent/prompts.ts` | 人设 A/B 系统提示词 + 续写前缀 `buildContinuationPrefix` |
+| `src/agent/story-agent.ts` | `createStoryAgent` 装配：白名单闸门 / `finishTurn` 阶段裁决 / 消息落库 / 素材注入 |
+| `src/agent/summary.ts` | 前情提要摘要 `buildRecapSummary`（确定性拼接，续写注入） |
+| `src/agent/image-prompt.ts` | **P0-5 一致性**：结构化角色/场景卡（`WorldCards`）+ 每帧自包含 prompt（`STYLE_PREFIX`/`RATIO_SUFFIX`） |
+| `src/agent/consistency.ts` | **P0-5 schema 校验**：`validateWorldCards` / `validatePagePromptSelfContained` / `validateChapterPage` |
+| `src/agent/asset-context.ts` | 素材→agent 上下文注入（build/inject，P3） |
+| `src/agent/qwen-dedicated.ts` | 百炼专属实例 provider（id `qwen-dedicated`） |
+| `src/agent/reference-asset.ts` | 主角参考图（孩子原画 data URI，P2） |
+| `src/tools/*` | 白名单 9 工具：`ingest_assets` / `analyze_ingest_batch` / `magic_render` / `save_story_element` / `build_character_card` / `check_skeleton` / `save_book_title` / `start_book_generation` / `get_world_state`；`paginate.ts`（分页归并/句读兜底）、`world-state.ts` |
+| `src/vision/*` | `visual-understand.ts`（图片→实体）+ `ingest-cluster.ts`（素材理解聚类，工具与 server 共用） |
+| `src/image/dashscope-image.ts` | 通义万相图生图封装（同步/异步、失败降级、退避） |
+| `src/jobs/image-jobs.ts` | 章节配图核心 `generateChapterImages`（worker/同步共用）+ **`buildWorldCards` 重建角色/场景卡 + `validateChapterPage` 校验** |
+| `src/jobs/queue.ts` | BullMQ Queue/Worker 工厂（Redis，队列名 `kidmagic-chapter-images`） |
+| `src/voice/tencent-asr.ts` | 腾讯云一句话识别（手写 TC3-HMAC 签名；**已通**） |
+| `src/voice/volc-tts.ts` | 火山单流 SSE TTS（**尚未调通**：`55000000 resource ID mismatched`，待换可用音色） |
+| `src/auth.ts` | P0-3 账号：scrypt 密码哈希 + HMAC-SHA256 JWT（零第三方） |
+| `src/storage/db-pg.ts` / `schema-pg.ts` / `repo.ts` | **PostgreSQL** 作品库：15 张表 + 40+ 数据访问函数（`$n` 占位、toNum、tx 级联） |
+| `src/storage/db.ts` / `schema.ts` | SQLite（`sqliteDbAdapter` 供离线测试/脚本） |
+| `src/server.ts` | node:http 工作台服务端（JSON API + 静态页，PORT=8787） |
+| `public/index.html` | H5 工作台前端（单文件内联 CSS/JS）：首页书架/起名/书详情/画室/对话/翻页回放/完成感/画布/资产弹窗 + P0-6 魔法装饰层 |
+| `public/admin.html` | P0-6 管理员后台页 |
+| `public/manifest.webmanifest` / `icon.svg` | PWA 静态资产 |
+| `scripts/*` | `demo-script.ts` / `demo-continuation.ts` / `smoke-image.ts` |
+| `test/*` | vitest 离线测试（faux provider，**28 用例**） |
+| `deploy/*` | 云上部署：Dockerfile / docker-compose.yml / nginx.conf.example / .env.production.example |
 
-- **允许**：`import` 上述 Pi 包（`pi-agent-core` / `pi-ai` / `pi-session-backend-sqlite-node`）的**顶层公开导出**。
-- **禁止**：
-  - `import` 任何 `pi-*/src/...` 内部路径；
-  - 依赖未文档化的内部行为；
-  - 在 fork 里修改任何 Pi 包源码（`agent-core`/`ai`/`coding-agent` 等保持与上游 `git diff` 为空）；
-  - 把 Pi 代码复制进本包。
-- **验收标准**：本包能改的只有 kidmagic 自己的文件；Pi 目录全部当「黑盒依赖」。
-- **遇到「想要 Pi 内部能力但没公开 API」的需求** → 写 issue/PR 回上游，不 hack 内部。
+## 缓存与队列规则（P0-2 BullMQ）
 
----
+- 队列名 `kidmagic-chapter-images`；Redis 本地用 **Memurai**（`localhost:6379`，无密码），`REDIS_HOST/PORT` 可覆盖（云上 compose 注入）。
+- **job data 只存 `{bookId, chapterId, sessionId, title}`（id+文本），绝不含 apiKey 与图片二进制**；角色/场景卡由 worker 内 `buildWorldCards` 从库重建，参考图 `resolveReferenceImage` 从库重建。
+- 入队失败 / Redis 不可用 → 调用方（`start_book_generation`）捕获并**降级同步图生图**；server 永不因队列不可用而崩。
+- 图生图每页串行 + 三层退避（429 命中 2500×attempt ms，否则 1200ms）。
 
-## 3. 产品领域上下文（给 AI coding 的锚点）
+## 数据库（PostgreSQL，15 张表）
 
-### 3.1 产品原则
-> **AI 可见度低，孩子主导度高。** 故事文案 90% 是孩子原话，AI 只做连接词整理（"有一天/后来/最后"），**禁止新增情节**。绘本是否保留孩子主导性 = 验收红线。
+`src/storage/schema-pg.ts` 为权威 DDL，`schema.ts`（SQLite）一一对应。核心关系：
 
-### 3.2 完整流程（P0 单次完整流程）
 ```
-① 素材管线：孩子逐个上传素材 → NER 命名实体识别 → 相关性聚类（半自动）→ 资产库
-② 故事确定：S0 见面 → S1 倾听+魔法反馈 → S2 缺口推理 → S3 最少追问(≤2轮) → S4 概括确认
-③ 绘本生成：第一章（原画 + 孩子原话 + 图生图可选）
-（P1）④ 二次使用：我的故事集 / 章节续写 / 新的开始（角色库复用）
+users ──< children ──< books ──< chapters ──< book_pages
+characters ──(book_characters)── books          (children.user_id ON DELETE CASCADE)
+sessions ──< story_elements
+sessions ──< assets ──< asset_clusters
+books ──< ingest_items（上传批次）
+sessions ──< session_messages
+invite_batches ──< invite_codes（P0-6 管理员）
 ```
 
-### 3.3 素材管线（NER 半自动聚类）
-- 孩子**先逐个上传素材**（多张画/元素），**再一口气讲述**（时序已定，勿改）。
-- 素材理解：用 pi-ai 多模态模型识别每个素材的实体（人/动物/场景/道具）。
-- 聚类：按相关性聚成**角色组/场景组/道具组**。**半自动**——AI 先展示"我看到有 X（小熊）、Y（大树），对吗？"，孩子确认后才定组，保护主导性。
-- 落库：`assets` + `asset_clusters`（见 3.7）。
+- 表：`ingest_items / assets / asset_clusters / sessions / session_messages / story_elements / characters / books / book_characters / chapters / book_pages / users / children / invite_batches / invite_codes`。
+- `books` 有 `user_id/child_id` 归属列（游客两条均 NULL，保留免登录体验）。
 
-### 3.4 引导状态机（S0-S4 演进版）
-| 阶段 | 名称 | 动作 | 出口条件 |
-|---|---|---|---|
-| S0 | 见面 | 欢迎 + 引导逐个上传素材 | 素材上传完成 + 孩子开口 |
-| S1 | 倾听+魔法反馈 | 孩子一口气讲完 → 魔法棒轻量动效"变出大树森林" → "我们听懂你的意思了"（开心反馈） | 讲述结束（素材+讲完） |
-| S2 | 缺口推理 | `check_skeleton` 后台推理大框架缺什么（角色/场景/冲突/结尾） | 缺口清单生成 |
-| S3 | 最少追问 | **只对缺口追问，上限 2 轮**，控制轮次不扯远不搞深 | 追问完毕（或已问 2 轮） |
-| S4 | 概括确认 | 用孩子原话概括整个故事 → 最终确认/修正 | 孩子确认或修正后无异议 → 触发生成 |
+## 代码约定
 
-- **策略是动态的**：孩子讲得多 → 倾听 + 补缺；讲得少/碎 → 回落引导兜底（三级降级）。
-- **大框架完整优先于细节发散**：超过缺口上限时只问最关键的 1 个，其余默认"留白"进绘本。
-- 阶段机**不在代码里**，存在于 agent state + 分阶段提示词里；`finishTurn` 钩子负责出口判定与阶段切换。
-- **三级降级兜底**（任何阶段）：换问法（开放→半开）→ 给选项（结合前文）→ 保底"今天就到这"并存档进度。
+- erasable TS：无 `enum`/`namespace`，字面量联合类型；import 放顶层；外部依赖精确锁版本。
+- 工具参数用 TypeBox；工具需列入 `KIDMAGIC_TOOL_NAMES` 白名单，非白名单一律被 `beforeToolCall` 拦截。
+- 改码后必跑：`npm run check`（零 error）+ `npm run test`（离线全绿，28/28）。
+- 新业务在后端终端输出**最简易中文 log**（数据流周转复盘用），例：`[素材注入] … / [对话] 阶段=S4 …`。
 
-### 3.5 五类问题模板（S3 缺口追问用）
-骨架（补缺优先）：角色 / 场景 / 冲突(情节·起) / 结尾。
-血肉（有余量才问）：情节·发展 / 情绪 / 细节。
-> 缺口追问保证大框架完整（"过得去"）；轮次上限 2 轮保证不跑偏。
+## 常用命令
 
-### 3.6 工具集（agent 可调用）
-| name | 作用 | 时机 |
-|---|---|---|
-| `ingest_assets` | 素材入库 + NER + 半自动聚类 | S0-S1 素材管线 |
-| `magic_render` | 魔法棒轻量动效反馈（具象化 + 开心反馈） | S1 |
-| `save_story_element` | 把孩子回答结构化存库（`child_words`=孩子原话） | 每轮回答后 |
-| `build_character_card` | 生成角色卡（主角从聚类中识别） | S2 |
-| `check_skeleton` | 后台推理故事大框架缺口 | S2 |
-| `save_book_title` | 存书名 | S4 生成前 |
-| `start_book_generation` | 触发绘本生成（第 N 章） | S4 出口 |
+```bash
+# 仓库根 workspace 形式
+npm run check --workspace=@earendil-works/pi-kidmagic
+npm run test  --workspace=@earendil-works/pi-kidmagic
+npm run demo  --workspace=@earendil-works/pi-kidmagic              # 单章真机 demo（会计费）
+npm run demo:continuation --workspace=@earendil-works/pi-kidmagic # 章节续写真机 demo
+npm run smoke:image --workspace=@earendil-works/pi-kidmagic       # 图生图真机冒烟
+# 工作台（在 packages/kidmagic 内执行）
+cd packages/kidmagic && npm run server   # http://localhost:8787
+```
 
-- 系统层工具（不暴露给 agent）：`asr_transcribe`（讯飞 ASR）、`generate_book_page`（图生图）、`persist_session`。
-- **安全红线**：`beforeToolCall` 钩子拦截一切非白名单工具调用（含 Pi 默认 bash 类，直接 block）。
+- 真机需 `.env`（见 `packages/kidmagic/.env.example`），key 已 gitignore。
+- Node ≥ 22.19（`node:sqlite` 实验警告；22.11 会报 `node:sqlite`，切 ≥ 22.13，推荐 22.23.x）。
+- **存储**：PostgreSQL 18+（`DATABASE_URL`，云上 docker compose）。**队列**：Redis（本地 Memurai，BullMQ 需 ≥6.2 语义，旧 tporadowski/redis 5.0 不满足）。
 
-### 3.7 数据表
-**P0**：
-`assets`（素材+NER标签）· `asset_clusters`（聚类：角色组/场景组/道具组）· `sessions` · `session_messages`(回放) · `story_elements` · `characters`(角色库，本地) · `book_characters`(多对多) · `books`(故事) · `chapters`(章节，含前情提要摘要) · `book_pages`(绘本页)
+## qwen / 百炼接入
 
-**P1**：`parent_summaries`(给家长的信)。
+- 专属实例端点 `https://llm-<id>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`，key `DASHSCOPE_API_KEY`。
+- provider 选择：专属实例 > 公共套餐 `qwen-token-plan-cn` > OpenRouter。
+- `qwen3.8-max`/`qwen3.7-plus` **原生支持视觉理解**（图片输入）。
+- 图生图走百炼**通义万相 qwen-image-3.0**（与 qwen 同 key；端点=chatBase 去 `/compatible-mode/v1` 拼 `/api/v1/services/aigc/multimodal-generation/generation`，`{prompt_extend:true, size:"1024*1024"}`）。
+- 语音 ASR/TTS 是需单独接入的服务：ASR 用腾讯云一句话识别（儿童口音友好，已通）；TTS 火山（待换可用音色）。
 
-> 关键关系：`characters`（角色库，跨故事共享，不依赖单个 session）↔ `book_characters`（多对多）↔ `books` → `chapters`。
+## 当前进度
 
-### 3.8 主导性验收口径（demo 可测）
-- `book_pages.text_source='child_raw'` 占比 ≥ 60%；
-- AI 新增情节数 = 0（`story_elements.element_type='plotbeat'` 且 `child_words` 为空的条数近似检查）。
+- **P0 已完成**：单次完整流程闭环（素材→讲故事→补缺→概括→生成第一章），真机主导性 100%。
+- **P1-B / P1-A 已完成**：章节续写闭环；工作台 server + H5（首页/起名/书详情+回看/画室/打字机对话/完成感）+ 视觉理解聚类 + 图生图接入 + 画布「生长」背景 + 资产总览弹窗 + 书列表增删改。
+- **P0-1 已完成**：存储 → PostgreSQL（repo 全异步、15 表、级联删书；SQLite 适配保留离线测试）。
+- **P0-2 已完成**：BullMQ 图生图异步化（配图核心 `image-jobs.ts`，worker/同步共用，job data 不含敏感信息，Redis 降级同步）。
+- **P0-3 已完成**：账号体系（家长手机号+密码 + 孩子档案 + JWT），游客免登录保留，**登录后书列表按 user/child 归属过滤**（`listBooksWithMeta` 带 `child_id/child_name`）。
+- **P0-4 部分**：语音链路——腾讯 ASR **已通**（`/api/voice/recognize`，前端 MediaRecorder + webm→16k WAV）；火山 TTS **未调通**（`55000000 resource ID mismatched`，用户去控制台换 seed-tts-2.0 匹配音色，后置）。
+- **P0-5 已完成**：一致性——`image-prompt.ts` 结构化角色/场景卡 + 每帧自包含 prompt（固定前后缀）+ `consistency.ts` schema 校验；`image-jobs.ts` `buildWorldCards` 从库重建卡片（asset_clusters→characters→story_elements 逐层兜底去重）。tsc=0、28/28。
+- **P0-6 已完成**：前端上线 + 家长端——reader **翻页回放**（封面/逐页/滑动/键盘/坏图占位）+ **家长端书架按孩子分组** + 移动端触控 44px + **魔法装饰层（旧版 UI 复用，只借装饰语言）+ 背景渐变 + touch-action** + 完成页「翻一翻」；PWA（manifest/icon/favicon）+ **fetch 全局兜底**（`apiFetch`：GET 5xx 自动重试、网络失败 toast，26 处替换 0 处裸 fetch）；管理员后台（admin.html + `/api/admin/*`）+ 部署骨架（Dockerfile/compose/nginx）+ **章节管理**（章节改名/删除 + 章节封面：默认该章第一页图、可上传替换，`chapters.cover_asset_id`）。
+- **工具白名单现 9 个**；测试 **28/28**（7 文件）。
 
-### 3.9 人设 A/B（prompt 层）
-- **A 琪琪老师**：知心姐姐，温柔鼓励型，描述性表扬。
-- **B 动画伙伴**：聪明友好卡通角色，活泼夸张。**注意 B 的"喜羊羊"是注册商标，demo 可测，上线必须换原创形象。**
+## 前端已知坑（改 index.html 时注意）
 
-### 3.10 二次使用模块（P1，本期不做）
-- **"我的故事集"工作台**（打开应用的第一层导航）：继续创作（续写某绘本下一章）/ 新的开始 / 我的角色们。
-- **章节续写**：开**新 session** + 注入**前情提要摘要**（`chapters.preface`），不续旧 session。
-- **新的开始**：可挑**老角色**（把角色卡作为 agent 上下文带入），也可**建新角色**（进角色库）。
-- **角色库归属**：P0 用**设备本地角色库**（本地 SQLite 即角色库），账号化放 P2。
-- **价值**：角色跨故事复用 = 孩子的长期 IP；章节续写 = 产品生命周期 / 留存钩子。
+- server 每次 `GET /` 重读 `public/index.html`，改前端即时生效、**无需重启 server**；改 `src/*` 才需重启。**用户约定：改完代码不要代启 server 进程，由用户自己编译启动看终端日志。**
+- `showConfirm()` 会用 `innerHTML` 替换 `#studio-actions`，**移除** `#pick-btn`/`#upload-btn`；`openChat` 必须每次重建，否则二次进入报 null。
+- 上传图 `uri` 自带 `uploads/` 前缀，缩略图要 `uri.split("/").pop()`；图生图页图在 `uploads/<date>/` 子目录，需保留路径。
+- 前端网络调用统一走 `apiFetch`（已全局替换），失败 toast + 恢复，避免卡死 UI。
+- 魔法装饰层 `#km-sky` 固定定位 z-index:0、`pointer-events:none`；内容容器 `#app` 需 `z-index:1`，弹层（modal 40 / overlay 10）正常在上。
 
----
+## git 纪律
 
-## 4. 代码质量（继承上游 + 本包补充）
-
-- **erasable TypeScript**（Node strip-only）：无 `enum`/`namespace`/`module`/`import =`/`export =`/`parameter properties`。用字面量联合类型 + 显式构造字段。
-- **无 `any`**，除非绝对必要；宁可显式类型。
-- **顶层 import only**：禁 `await import()`、动态类型 import。
-- **全量读文件再改**：宽泛改动前、编辑未完全检视的文件前、调研/审计时，完整读取，不依赖搜索片段。
-- **不降级依赖修复 type error**：升级依赖而不是降级代码。
-- **不删看似有意的代码**：删除前先确认，绝不静默移除。
-- **依赖安全**：外部依赖精确锁版本；`npm install --ignore-scripts`；lockfile 变更当 reviewed code 对待。
-
----
-
-## 5. 质量门与本地命令（本包专属）
-
-命令在仓库根用 workspace 形式运行（PowerShell；也可在 `packages/kidmagic` 内直接 `npm run <script>`）：
-
-- **类型检查**：`npm run check --workspace=@earendil-works/pi-kidmagic`（`tsgo --noEmit`，覆盖 src / scripts / test）。改码后必跑，零 error 才算过。
-- **单元 + 冒烟测试**：`npm run test --workspace=@earendil-works/pi-kidmagic`（vitest，仅本包 test/）。本包测试**全部离线**（faux provider + 内存 SQLite，见 §8），不触网、不计费，改码后应常跑，新增/修改测试必须跑到通过。
-- **构建**：`npm run build --workspace=@earendil-works/pi-kidmagic`（tsgo emit 到 `dist/`，仅 src）。改了对外导出、或运行时走 dist 联调前跑。
-- **固定剧本 demo（真实模型、会计费）**：
-  ```powershell
-  $env:OPENROUTER_API_KEY = "sk-or-..."
-  npm run demo --workspace=@earendil-works/pi-kidmagic
-  ```
-  默认模型 `google/gemini-2.5-flash`，可用 `OPENROUTER_MODEL`、`KIDMAGIC_PERSONA`（A/B）覆盖；在包目录生成 `kidmagic-demo.db`。逻辑正确性优先靠 §8 离线测试，demo 只用于真人/真模型抽检。
-- 依赖的上游 Pi 包 `dist/` 被 gitignore；首次拉取或 dist 缺失时，按依赖链先构建上游包（telemetry→chord→ai→agent→sqlite-node），其中 ai 包需先 `npm run hydrate:model-data` 拉模型 catalog。
-- 临时脚本放 `scripts/`，不把多行脚本内嵌进 shell 命令。
-
----
-
-## 6. Git 纪律
-
-- **只提交本会话自己改的文件**；`git add <明确路径>`，禁 `git add -A` / `git add .`。
-- **禁止**：`git reset --hard`、`git checkout .`、`git clean -fd`、`git stash`、`git commit --no-verify`。
-- **不 force push**；rebase 冲突只在**自己改过的文件**里解决，冲突在他文件则中止并询问。
-- **commit 格式**：`{feat,fix,docs}(kidmagic): <信息>`。
-- **跟随上游**：`git fetch upstream` + merge **release tag**（不跟 main）。因不碰 Pi 包，冲突面≈0；真冲突只会出现在本包 `package.json` 的依赖版本号。
-
----
-
-## 7. Changelog
-
-- 位置：本包 `CHANGELOG.md`。新条目一律进 `## [Unreleased]` 下的 `### Breaking Changes / ### Added / ### Changed / ### Fixed / ### Removed`，**只 append 不重复**。
-- 已发布版本章节（如 `## [0.1.0]`）不可修改。
-- 提交若关联 issue/PR，按上游格式标注（`[#123]` / `by @user`）。
-
----
-
-## 8. 测试约定（本包）
-
-- 测试在 `test/`，vitest，运行见 §5。**全部离线、确定性**：禁止真实网络与真实 API key；模型一律用 faux，数据库一律用内存库。
-- faux provider 从 `@earendil-works/pi-ai/compat` 导入：`registerFauxProvider` / `fauxAssistantMessage` / `fauxToolCall`。
-  - `const faux = registerFauxProvider()`；`faux.setResponses([...])` 按**模型被消费的顺序**排队；模型用 `faux.getModel()`；`afterEach` 里 `faux.unregister()`。
-  - 工具调用回合：`fauxAssistantMessage([fauxToolCall(name, args), ...], { stopReason: "toolUse" })`；纯文本回复：`fauxAssistantMessage("...")`。
-  - `finishTurn` 返回 `continue` 会在同一次 `agent.prompt` 内继续消费下一条响应——排队时按此预估条数。
-  - 范本：`test/story-agent.smoke.test.ts`（S0→S4 闭环、缺口追问 2 轮上限、非白名单工具拦截）。
-- 数据库：`openDatabase(":memory:")`，每个用例独立。
-- 每条产品规则（阶段切换、工具约束、主导性口径、角色去重）都应有对应断言；`childRawRatio` 等验收口径范本见 `test/storage.test.ts`。
-
----
-
-## 9. 二开协作与作品集定位
-
-- 本包作为个人作品集的开源二开项目：README 须注明「Pi 能力 / 二开内容」；许可证 MIT，保留上游版权声明。
-- 发现上游通用缺口 → 整理 issue/PR 回上游；**先跑通本产品，再为贡献而改上游**。
-- 上游规范与本文件冲突时，以**不违背上游精神**、更贴合本包实际为准；重大偏离需向用户确认。
-
----
-
-## 10. User Override
-
-若用户指令与本文件任何规则冲突，先向用户明确确认，再执行覆盖。不静默违背本规范。
+- 只 `git add` 明确路径，禁 `add -A` / `reset --hard`。
+- commit 格式：`{feat,fix,docs}(kidmagic): ...`。
+- 未获用户要求不主动 commit；上游 Pi 目录一律不改。

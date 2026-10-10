@@ -6,16 +6,26 @@
  * 验证对话引擎、阶段机、白名单工具与作品库落库，而不是验证语音链路。
  *
  * 运行（在 packages/kidmagic 目录，PowerShell）：
- *   $env:OPENROUTER_API_KEY = "sk-or-..."
- *   $env:OPENROUTER_MODEL   = "google/gemini-2.5-flash"   # 可选，默认即此
- *   $env:KIDMAGIC_PERSONA   = "A"                          # 可选，A 琪琪老师 / B 动画伙伴
- *   npm run demo
+ *   方式一（推荐，key 写入 .env）：复制 .env.example 为 .env，填入 QWEN_TOKEN_PLAN_CN_API_KEY，执行 npm run demo
+ *   方式二（当前会话临时设置）：
+ *     $env:QWEN_TOKEN_PLAN_CN_API_KEY = "你的阿里云百炼 Token Plan key"
+ *     $env:QWEN_MODEL               = "qwen3.8-flash"  # 可选，默认即此（多模态 + 工具调用）
+ *     $env:KIDMAGIC_PERSONA         = "A"             # 可选，A 琪琪老师 / B 动画伙伴
+ *     npm run demo
+ *   备选 OpenRouter：设置 OPENROUTER_API_KEY（或 KIDMAGIC_PROVIDER=openrouter）。
  *
  * 离线、不花钱地验证引擎逻辑请改用：npm run test（faux provider 冒烟测试）。
  */
 import { createModels, type AssistantMessage } from "@earendil-works/pi-ai";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
-import { createStoryAgent, openDatabase, repo } from "../src/index.ts";
+import { qwenTokenPlanCnProvider } from "@earendil-works/pi-ai/providers/qwen-token-plan-cn";
+import {
+	createStoryAgent,
+	repo,
+	createQwenDedicatedProvider,
+	QWEN_DEDICATED_PROVIDER_ID,
+} from "../src/index.ts";
+import { openDatabase, sqliteDbAdapter } from "../src/storage/db.ts";
 import { insertAsset } from "../src/storage/repo.ts";
 import type { Persona } from "../src/agent/stages.ts";
 
@@ -37,24 +47,58 @@ function assistantText(message: AssistantMessage | undefined): string {
 }
 
 async function main(): Promise<void> {
-	const apiKey = process.env.OPENROUTER_API_KEY;
-	if (!apiKey) {
-		console.error("缺少 OPENROUTER_API_KEY 环境变量。离线验证请运行 npm run test（faux 冒烟测试）。");
-		process.exit(1);
-	}
-	const modelId = process.env.OPENROUTER_MODEL ?? "google/gemini-2.5-flash";
 	const persona: Persona = process.env.KIDMAGIC_PERSONA === "B" ? "B" : "A";
 
 	const models = createModels();
-	models.setProvider(openrouterProvider()); // openrouterProvider 经 envApiKeyAuth 自动读取 OPENROUTER_API_KEY
-	const model = models.getModel("openrouter", modelId);
-	if (!model) {
-		console.error(`模型 openrouter/${modelId} 未在本地 catalog 中找到，可用 OPENROUTER_MODEL 指定其它 id。`);
+
+	// Provider 选择（优先级从高到低）：
+	//  1) 百炼「专属实例」：设了 QWEN_BASE_URL（llm-<id>.../compatible-mode/v1）+ 任一 qwen key
+	//  2) 百炼「Token Plan 公共套餐网关」：设了 QWEN_TOKEN_PLAN_CN_API_KEY
+	//  3) OpenRouter：设了 OPENROUTER_API_KEY（或 KIDMAGIC_PROVIDER=openrouter 强制）
+	const forceOpenRouter = process.env.KIDMAGIC_PROVIDER === "openrouter";
+	const dedicatedBaseUrl = process.env.QWEN_BASE_URL;
+	const dedicatedKey =
+		process.env.QWEN_API_KEY ?? process.env.DASHSCOPE_API_KEY ?? process.env.QWEN_TOKEN_PLAN_CN_API_KEY;
+	const qwenPlanKey = process.env.QWEN_TOKEN_PLAN_CN_API_KEY;
+	const openRouterKey = process.env.OPENROUTER_API_KEY;
+
+	let providerId: string;
+	let modelId: string;
+	if (!forceOpenRouter && dedicatedBaseUrl && dedicatedKey) {
+		modelId = process.env.QWEN_MODEL ?? process.env.KIDMAGIC_MODEL ?? "qwen3.8-max";
+		models.setProvider(createQwenDedicatedProvider({ baseUrl: dedicatedBaseUrl, modelId }));
+		providerId = QWEN_DEDICATED_PROVIDER_ID;
+	} else if (!forceOpenRouter && qwenPlanKey) {
+		models.setProvider(qwenTokenPlanCnProvider()); // 经 envApiKeyAuth 自动读取 QWEN_TOKEN_PLAN_CN_API_KEY
+		providerId = "qwen-token-plan-cn";
+		modelId = process.env.QWEN_MODEL ?? process.env.KIDMAGIC_MODEL ?? "qwen3.8-flash";
+	} else if (openRouterKey) {
+		models.setProvider(openrouterProvider()); // 经 envApiKeyAuth 自动读取 OPENROUTER_API_KEY
+		providerId = "openrouter";
+		modelId = process.env.OPENROUTER_MODEL ?? process.env.KIDMAGIC_MODEL ?? "google/gemini-2.5-flash";
+	} else {
+		console.error(
+			[
+				"未找到可用的模型配置，请三选一：",
+				"  1) 百炼专属实例：设置 QWEN_BASE_URL 与 QWEN_API_KEY（或 DASHSCOPE_API_KEY）",
+				"  2) 百炼 Token Plan 公共套餐：设置 QWEN_TOKEN_PLAN_CN_API_KEY",
+				"  3) OpenRouter：设置 OPENROUTER_API_KEY（或 KIDMAGIC_PROVIDER=openrouter）",
+				"离线验证引擎逻辑可不花钱运行：npm run test（faux 冒烟测试）。",
+			].join("\n"),
+		);
 		process.exit(1);
 	}
 
-	const db = openDatabase("./kidmagic-demo.db");
-	const { agent, runtime, sessionId } = createStoryAgent({
+	const model = models.getModel(providerId, modelId);
+	if (!model) {
+		console.error(`模型 ${providerId}/${modelId} 未在本地 catalog 中找到，请用对应环境变量指定有效模型 id。`);
+		process.exit(1);
+	}
+	console.log(`使用模型：${providerId}/${modelId}　人设：${persona}`);
+
+	const rawDb = openDatabase("./kidmagic-demo.db");
+	const db = sqliteDbAdapter(rawDb);
+	const { agent, runtime, sessionId } = await createStoryAgent({
 		db,
 		model,
 		persona,
@@ -62,8 +106,8 @@ async function main(): Promise<void> {
 	});
 
 	// 模拟孩子在开口前先逐张上传了两幅画（真实产品由前端/素材管线写入）
-	insertAsset(db, { sessionId: runtime.sessionId, kind: "drawing", mimeType: "image/png", uri: "./demo-assets/rabbit.png" });
-	insertAsset(db, { sessionId: runtime.sessionId, kind: "drawing", mimeType: "image/png", uri: "./demo-assets/forest.png" });
+	await insertAsset(db, { sessionId: runtime.sessionId, kind: "drawing", mimeType: "image/png", uri: "./demo-assets/rabbit.png" });
+	await insertAsset(db, { sessionId: runtime.sessionId, kind: "drawing", mimeType: "image/png", uri: "./demo-assets/forest.png" });
 
 	// 过程可视化：打印每次工具调用
 	agent.subscribe((event) => {
@@ -83,19 +127,19 @@ async function main(): Promise<void> {
 	// —— 创作产物报告 ——
 	console.log("\n================ 创作产物 ================");
 	console.log(`会话：${sessionId}　最终阶段：${runtime.stage}　缺口追问轮次：${runtime.gapRoundCount}`);
-	const book = runtime.bookId ? repo.getBook(db, runtime.bookId) : undefined;
+	const book = runtime.bookId ? await repo.getBook(db, runtime.bookId) : undefined;
 	console.log("绘本：", book);
 	if (runtime.chapterId) {
-		const pages = repo.listPages(db, runtime.chapterId);
+		const pages = await repo.listPages(db, runtime.chapterId);
 		for (const p of pages) console.log(`  P${p.page_no}　[${p.text_source}]　${p.text}`);
-		const ratio = repo.childRawRatio(db, runtime.chapterId);
+		const ratio = await repo.childRawRatio(db, runtime.chapterId);
 		console.log(`主导性验收：孩子原话页 ${ratio.childRaw}/${ratio.total}，占比 ${(ratio.ratio * 100).toFixed(0)}%（门槛 60%）`);
 	}
 	console.log("故事元素：");
-	for (const el of repo.listStoryElements(db, sessionId)) {
+	for (const el of await repo.listStoryElements(db, sessionId)) {
 		console.log(`  (${el.element_type}) ${el.content}　｜原话：${el.child_words}`);
 	}
-	const characters = db.prepare("SELECT name, appearance, personality FROM characters").all() as unknown as {
+	const characters = (await db.query("SELECT name, appearance, personality FROM characters")) as unknown as {
 		name: string;
 		appearance: string;
 		personality: string;

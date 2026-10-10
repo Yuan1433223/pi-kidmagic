@@ -3,6 +3,7 @@ import { Type, type Static } from "typebox";
 import { insertStoryElement } from "../storage/repo.ts";
 import type { ToolDeps } from "./types.ts";
 import { textResult } from "./types.ts";
+import { stripMarkdown } from "../util/sanitize.ts";
 
 const parameters = Type.Object({
 	elementType: Type.Union([
@@ -32,15 +33,16 @@ export function createSaveStoryElementTool(deps: ToolDeps): AgentTool<typeof par
 		parameters,
 		execute: async (_toolCallId, params: Params) => {
 			const { db, runtime } = deps;
-			insertStoryElement(db, {
+			const content = stripMarkdown(params.content);
+			await insertStoryElement(db, {
 				sessionId: runtime.sessionId,
 				bookId: runtime.bookId ?? null,
 				elementType: params.elementType,
-				content: params.content,
-				childWords: params.childWords,
+				content,
+				childWords: stripMarkdown(params.childWords),
 				orderIdx: params.orderIdx ?? 0,
 			});
-			return textResult(`我记下啦：${params.content}`);
+			return textResult(`我记下啦：${content}`);
 		},
 	};
 }

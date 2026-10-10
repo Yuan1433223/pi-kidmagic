@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kidmagic 管理后台</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#fff; --border:#e3e6ea; --text:#1a1b1c; --sub:#6b7280;
+    --accent:#4f6ef7; --danger:#ea6668; --ok:#52c41a; --warn:#faad14;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font:14px/1.6 -apple-system,"PingFang SC","Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+  .wrap{max-width:1080px;margin:0 auto;padding:24px 16px 60px}
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+  header h1{font-size:20px;font-weight:700}
+  .btn{padding:7px 14px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer;font-size:13px}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn.danger{color:var(--danger);border-color:#f2c4c5}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn.sm{padding:3px 9px;font-size:12px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .stat{border:1px solid var(--border);border-radius:10px;padding:14px;background:#fafbfc}
+  .stat .num{font-size:26px;font-weight:700;margin-top:4px}
+  .stat .lab{color:var(--sub);font-size:12px}
+  .tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+  .tab{padding:8px 16px;border:1px solid var(--border);border-radius:999px;background:#fff;cursor:pointer;font-size:13px}
+  .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .view{display:none}
+  .view.show{display:block}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--sub);font-weight:600;background:#fafbfc}
+  .badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;background:#eef0f3;color:var(--sub)}
+  .badge.done{background:#e8f7ee;color:var(--ok)}
+  .badge.generating{background:#fff6e0;color:var(--warn)}
+  .badge.issued{background:#eef0f3;color:var(--sub)}
+  .badge.activated{background:#e8f7ee;color:var(--ok)}
+  .badge.disabled{background:#fdecec;color:var(--danger)}
+  .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px;word-break:break-all}
+  .muted{color:var(--sub);font-size:12px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  input,select{padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:#fff}
+  input:focus{border-color:var(--accent);outline:none}
+  label{font-size:12px;color:var(--sub);display:block;margin-bottom:4px}
+  form .field{margin-bottom:12px}
+  form .field input{width:100%}
+  form.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  form.two .field input{width:100%}
+  .notice{padding:12px;border-radius:8px;font-size:13px;margin-bottom:12px;display:none}
+  .notice.err{background:#fdecec;color:#a03a3c;border:1px solid #f2c4c5;display:block}
+  .notice.ok{background:#e8f7ee;color:#1f7a3a;border:1px solid #b9e5c8;display:block}
+  .login-cover{max-width:360px;margin:12vh auto;text-align:center}
+  .login-cover .card{padding:28px}
+  .login-cover h2{font-size:18px;margin-bottom:20px}
+  .login-cover input{width:100%;margin-bottom:12px}
+  .details{margin-top:10px}
+  .details summary{cursor:pointer;color:var(--accent);font-size:12px;user-select:none}
+  @media (max-width:640px){ form.two{grid-template-columns:1fr} .grid{grid-template-columns:1fr 1fr} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- 登录 -->
+  <div id="loginView" class="login-cover" style="display:none">
+    <div class="card">
+      <h2>Kidmagic 管理后台</h2>
+      <div class="notice" id="loginMsg"></div>
+      <input id="pwd" type="password" placeholder="管理员密码" autocomplete="off">
+      <button class="btn primary" id="loginBtn" style="width:100%">登录</button>
+    </div>
+  </div>
+
+  <!-- 主后台 -->
+  <div id="mainView" style="display:none">
+    <header>
+      <h1>🎛 Kidmagic 管理后台</h1>
+      <button class="btn" id="logoutBtn">退出</button>
+    </header>
+    <div class="notice" id="msg"></div>
+
+    <div class="tabs">
+      <button class="tab active" data-view="overview">概览</button>
+      <button class="tab" data-view="users">用户</button>
+      <button class="tab" data-view="books">作品</button>
+      <button class="tab" data-view="invites">邀请码</button>
+    </div>
+
+    <!-- 概览 -->
+    <div class="view show" id="view-overview">
+      <div class="grid" id="statGrid"></div>
+      <div class="card"><div class="muted">提示：用户 = 已注册家长；孩子 = 家长下的孩子档案；作品 = 全部绘本。删除操作不可恢复，请谨慎。</div></div>
+    </div>
+
+    <!-- 用户 -->
+    <div class="view" id="view-users">
+      <div class="card">
+        <table><thead><tr><th>手机号</th><th>昵称</th><th>孩子数</th><th>作品数</th><th>注册时间</th><th>操作</th></tr></thead>
+        <tbody id="userRows"></tbody></table>
+      </div>
+    </div>
+
+    <!-- 作品 -->
+    <div class="view" id="view-books">
+      <div class="card">
+        <table><thead><tr><th>标题</th><th>状态</th><th>归属家长</th><th>孩子</th><th>章数</th><th>更新时间</th><th>操作</th></tr></thead>
+        <tbody id="bookRows"></tbody></table>
+      </div>
+    </div>
+
+    <!-- 邀请码 -->
+    <div class="view" id="view-invites">
+      <div class="card">
+        <h3 style="font-size:15px;margin-bottom:12px">新建批次</h3>
+        <form class="two" id="batchForm">
+          <div class="field"><label>批次名称</label><input id="bName" placeholder="例如：幼儿园园宝班"></div>
+          <div class="field"><label>生成数量（1–10000）</label><input id="bCount" type="number" value="50"></div>
+          <div class="field" style="grid-column:1/-1"><label>二维码入口域名（含 https://）</label><input id="bUrl" placeholder="https://your-domain.com"></div>
+          <div class="field" style="grid-column:1/-1"><label>备注（可选）</label><input id="bNote" placeholder="用途/渠道"></div>
+        </form>
+        <div class="row"><button class="btn primary" id="bCreate">生成批次</button></div>
+      </div>
+      <div class="card">
+        <table><thead><tr><th>批次</th><th>数量</th><th>已激活</th><th>域名</th><th>创建时间</th><th>操作</th></tr></thead>
+        <tbody id="batchRows"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const API=""; // 同源
+  const $=(s)=>document.querySelector(s);
+  let token=localStorage.getItem("kidmagic_admin_token")||"";
+
+  function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+  function fmt(t){return t?new Date(Number(t)).toLocaleString("zh-CN",{hour12:false}):"-";}
+  function badge(s){return `<span class="badge ${s==="done"?"done":s==="generating"?"generating":s==="issued"?"issued":s==="activated"?"activated":"disabled"}">${esc(s)}</span>`;}
+  function showMsg(el,text,ok){el.className="notice "+(ok?"ok":"err");el.textContent=text;}
+
+  async function api(path,opts){
+    const r=await fetch(API+path,Object.assign({},opts,{headers:Object.assign({"Authorization":"Bearer "+token},opts&&opts.headers||{})}));
+    if(r.status===401){ logout(); throw new Error("登录已过期"); }
+    const ct=r.headers.get("content-type")||"";
+    const body=ct.includes("json")?await r.json():null;
+    if(!r.ok){ throw new Error(body&&body.error||("请求失败 HTTP "+r.status)); }
+    return body;
+  }
+
+  async function boot(){
+    if(!token){ showLogin(); return; }
+    try{
+      await api("/api/admin/overview");
+      showMain();
+      loadAll();
+    }catch(e){ showLogin(); }
+  }
+
+  function showLogin(){
+    $("#loginView").style.display="block"; $("#mainView").style.display="none";
+  }
+  function showMain(){
+    $("#loginView").style.display="none"; $("#mainView").style.display="block";
+  }
+  function logout(){
+    token=""; localStorage.removeItem("kidmagic_admin_token");
+    showLogin(); $("#pwd").value="";
+  }
+
+  // ── 登录 ──
+  $("#loginBtn").onclick=async()=>{
+    const pwd=$("#pwd").value;
+    try{
+      const r=await fetch(API+"/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pwd})});
+      const b=await r.json();
+      if(!r.ok){ showMsg($("#loginMsg"),b.error||"登录失败",false); return; }
+      token=b.token; localStorage.setItem("kidmagic_admin_token",token);
+      showMain(); loadAll();
+    }catch(e){ showMsg($("#loginMsg"),e.message,false); }
+  };
+  $("#logoutBtn").onclick=logout;
+
+  // ── tabs ──
+  document.querySelectorAll(".tab").forEach(t=>{
+    t.onclick=()=>{
+      document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+      t.classList.add("active");
+      document.querySelectorAll(".view").forEach(v=>v.classList.remove("show"));
+      $("#view-"+t.dataset.view).classList.add("show");
+    };
+  });
+
+  // ── 加载各视图 ──
+  async function loadAll(){ await Promise.all([loadOverview(),loadUsers(),loadBooks(),loadInvites()]); }
+
+  async function loadOverview(){
+    const {overview}=await api("/api/admin/overview");
+    const items=[["家长用户",overview.users],["孩子档案",overview.children],["全部作品",overview.books],["生成中",overview.generating],["已完成",overview.done]];
+    $("#statGrid").innerHTML=items.map(([lab,num])=>
+      `<div class="stat"><div class="lab">${esc(lab)}</div><div class="num">${num}</div></div>`).join("");
+  }
+
+  async function loadUsers(){
+    const {users}=await api("/api/admin/users");
+    $("#userRows").innerHTML=users.map(u=>
+      `<tr>
+        <td class="mono">${esc(u.phone)}</td>
+        <td>${esc(u.nickname)||'<span class="muted">-</span>'}</td>
+        <td>${u.child_count}</td><td>${u.book_count}</td>
+        <td class="muted">${fmt(u.created_at)}</td>
+        <td>
+          <details class="details"><summary>孩子档案</summary><div id="child-${esc(u.id)}">加载中…</div></details>
+          <button class="btn sm danger" data-del-user="${esc(u.id)}">删除</button>
+        </td>
+      </tr>`).join("");
+    users.forEach(u=>{ bindChildDetail(u.id); bindDelUser(u.id); });
+  }
+
+  async function bindChildDetail(userId){
+    const box=$("#child-"+userId); if(!box) return;
+    try{
+      const {children}=await api("/api/admin/users/"+encodeURIComponent(userId)+"/children");
+      box.innerHTML=children.length
+        ? `<div class="muted" style="margin-top:4px">${children.map(c=>esc(c.name)+(c.age!=null?"（"+c.age+"岁）":"")+" · "+c.book_count+" 本书").join("<br>")}</div>`
+        : `<div class="muted" style="margin-top:4px">无孩子档案</div>`;
+    }catch(e){ box.textContent="加载失败"; }
+  }
+  function bindDelUser(userId){
+    const btn=document.querySelector(`[data-del-user="${userId}"]`); if(!btn) return;
+    btn.onclick=async()=>{
+      if(!confirm("确认删除该家长？其所有孩子档案与作品都会被级联删除，不可恢复。")) return;
+      try{ await api("/api/admin/users/"+encodeURIComponent(userId),{method:"DELETE"}); await loadUsers(); await loadOverview(); await loadBooks(); }
+      catch(e){ showMsg($("#msg"),e.message,false); }
+    };
+  }
+
+  async function loadBooks(){
+    const {books}=await api("/api/admin/books");
+    $("#bookRows").innerHTML=books.map(b=>
+      `<tr>
+        <td>${esc(b.title)}</td>
+        <td>${badge(b.status)}</td>
+        <td>${esc(b.user_phone)||'<span class="muted">游客</span>'}</td>
+        <td>${esc(b.child_name)||'<span class="muted">-</span>'}</td>
+        <td>${b.chapter_count}</td>
+        <td class="muted">${fmt(b.updated_at)}</td>
+        <td><button class="btn sm danger" data-del-book="${esc(b.id)}">删除</button></td>
+      </tr>`).join("");
+    books.forEach(b=>{
+      const btn=document.querySelector(`[data-del-book="${b.id}"]`); if(!btn) return;
+      btn.onclick=async()=>{
+        if(!confirm("确认删除绘本「"+b.title+"」？不可恢复。")) return;
+        try{ await api("/api/admin/books/"+encodeURIComponent(b.id),{method:"DELETE"}); await loadBooks(); await loadOverview(); }
+        catch(e){ showMsg($("#msg"),e.message,false); }
+      };
+    });
+  }
+
+  async function loadInvites(){
+    const {batches}=await api("/api/admin/invite-batches");
+    $("#batchRows").innerHTML=batches.map(b=>
+      `<tr>
+        <td>${esc(b.name)}<br><span class="mono muted">${esc(b.id)}</span></td>
+        <td>${b.issued}</td><td>${b.activated}</td>
+        <td class="mono">${esc(b.base_url)}</td>
+        <td class="muted">${fmt(b.created_at)}</td>
+        <td>
+          <details class="details"><summary>查看码（${b.issued}）</summary><div id="codes-${esc(b.id)}">加载中…</div></details>
+          <a class="btn sm" href="/api/admin/invite-batches/${encodeURIComponent(b.id)}/csv">CSV</a>
+          <button class="btn sm danger" data-del-batch="${esc(b.id)}">删除</button>
+        </td>
+      </tr>`).join("");
+    batches.forEach(b=>{ bindBatchCodes(b.id); bindDelBatch(b.id); });
+  }
+  async function bindBatchCodes(batchId){
+    const box=$("#codes-"+batchId); if(!box) return;
+    try{
+      const {codes}=await api("/api/admin/invite-batches/"+encodeURIComponent(batchId)+"/codes");
+      box.innerHTML=`<div style="margin-top:6px;max-height:240px;overflow:auto;font-size:12px">`+
+        codes.map(c=>`<div class="row" style="gap:6px;padding:2px 0"><span class="mono">${esc(c.code)}</span>${badge(c.status)}<span class="muted">${esc(c.user_name)||""}</span></div>`).join("")+
+        `</div>`;
+    }catch(e){ box.textContent="加载失败"; }
+  }
+  function bindDelBatch(batchId){
+    const btn=document.querySelector(`[data-del-batch="${batchId}"]`); if(!btn) return;
+    btn.onclick=async()=>{
+      if(!confirm("确认删除该批次？其全部邀请码也会删除。")) return;
+      try{ await api("/api/admin/invite-batches/"+encodeURIComponent(batchId),{method:"DELETE"}); await loadInvites(); }
+      catch(e){ showMsg($("#msg"),e.message,false); }
+    };
+  }
+
+  $("#bCreate").onclick=async()=>{
+    const name=$("#bName").value, count=parseInt($("#bCount").value||"0",10), baseUrl=$("#bUrl").value.trim(), note=$("#bNote").value;
+    try{
+      const {batch}=await api("/api/admin/invite-batches",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,count,baseUrl,note})});
+      showMsg($("#msg"),"批次「"+batch.name+"」已生成 "+batch.count+" 个邀请码",true);
+      $("#bName").value=""; $("#bNote").value="";
+      await loadInvites();
+    }catch(e){ showMsg($("#msg"),e.message,false); }
+  };
+
+  boot();
+})();
+</script>
+</body>
+</html>

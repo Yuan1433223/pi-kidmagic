@@ -7,9 +7,25 @@
  * - story_elements.child_words / book_pages.text_source 是"孩子主导性"验收依据。
  * - chapters.recap_summary 为 P1 章节续写预留（前情提要摘要）。
  *
- * P0 共 10 张表；parent_summaries（家长报告）属 P1，暂不建。
+ * P0 共 10 张表 + P1 ingest_items（用户上传暂存表，解耦原始输入与正式素材库）；
+ * parent_summaries（家长报告）属 P2，暂不建。
  */
 export const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS ingest_items (
+  id         TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  book_id    TEXT NOT NULL,
+  batch_no   INTEGER NOT NULL,              -- 上传批次（每批上限约 10 张，可多批）
+  kind       TEXT NOT NULL DEFAULT 'drawing', -- drawing | photo | other
+  mime_type  TEXT NOT NULL,
+  uri        TEXT NOT NULL,                 -- 本地存储相对路径，如 uploads/<id>.png
+  role       TEXT NOT NULL DEFAULT 'raw_child', -- 统一图片角色：raw_child|cover_original|ref_character|gen_page
+  width      INTEGER,
+  height     INTEGER,
+  status     TEXT NOT NULL DEFAULT 'pending', -- pending|processing|confirmed|discarded
+  created_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS assets (
   id           TEXT PRIMARY KEY,
   session_id   TEXT,
@@ -27,6 +43,7 @@ CREATE TABLE IF NOT EXISTS asset_clusters (
   label        TEXT NOT NULL,              -- 组名，如"小兔子"
   confirmed    INTEGER NOT NULL DEFAULT 0, -- 半自动：孩子确认后才为 1
   asset_ids    TEXT NOT NULL,              -- JSON 数组
+  appearance   TEXT NOT NULL DEFAULT '',   -- 视觉理解的外观描述（角色/场景特征，agent 与图生图用它，不再追问外观）
   created_at   INTEGER NOT NULL
 );
 
@@ -76,6 +93,8 @@ CREATE TABLE IF NOT EXISTS books (
   title          TEXT NOT NULL DEFAULT '',
   cover_asset_id TEXT,
   status         TEXT NOT NULL DEFAULT 'draft', -- draft | generating | done
+  user_id        TEXT,                  -- P0-3 归属家长（游客为 NULL）
+  child_id       TEXT,                  -- P0-3 归属孩子档案（游客为 NULL）
   created_at     INTEGER NOT NULL,
   updated_at     INTEGER NOT NULL
 );
@@ -109,9 +128,31 @@ CREATE TABLE IF NOT EXISTS book_pages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_assets_session ON assets(session_id);
+CREATE INDEX IF NOT EXISTS idx_ingest_session ON ingest_items(session_id);
+CREATE INDEX IF NOT EXISTS idx_ingest_book_batch ON ingest_items(book_id, batch_no);
 CREATE INDEX IF NOT EXISTS idx_clusters_session ON asset_clusters(session_id);
 CREATE INDEX IF NOT EXISTS idx_messages_session ON session_messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_elements_session ON story_elements(session_id);
 CREATE INDEX IF NOT EXISTS idx_pages_chapter ON book_pages(chapter_id);
 CREATE INDEX IF NOT EXISTS idx_chapters_book ON chapters(book_id);
+
+-- P0-3 账号：家长（手机号+密码）与孩子档案
+CREATE TABLE IF NOT EXISTS users (
+  id            TEXT PRIMARY KEY,
+  phone         TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  nickname      TEXT NOT NULL DEFAULT '',
+  created_at    INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS children (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  age        INTEGER,
+  avatar     TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_children_user ON children(user_id);
 `;

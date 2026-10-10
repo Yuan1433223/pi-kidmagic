@@ -23,13 +23,13 @@ export function createBuildCharacterCardTool(deps: ToolDeps): AgentTool<typeof p
 		parameters,
 		execute: async (_toolCallId, params: Params) => {
 			const { db, runtime } = deps;
-			const characterId = upsertCharacter(db, {
+			const characterId = await upsertCharacter(db, {
 				name: params.name,
 				appearance: params.appearance,
 				personality: params.personality,
 				catchphrase: params.catchphrase,
 			});
-			if (runtime.bookId) linkBookCharacter(db, runtime.bookId, characterId, "protagonist");
+			if (runtime.bookId) await linkBookCharacter(db, runtime.bookId, characterId, "protagonist");
 			return textResult(`角色「${params.name}」登场啦！`);
 		},
 	};

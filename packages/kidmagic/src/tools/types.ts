@@ -1,12 +1,19 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
-import type { DatabaseSync } from "../storage/db.ts";
+import type { Queue } from "bullmq";
+import type { Db } from "../storage/db-pg.ts";
 import type { StoryRuntime } from "../agent/stages.ts";
+import type { ChapterImageJobData } from "../jobs/image-jobs.ts";
 
 /** 工具执行依赖：作品库句柄 + 当前会话运行态（由 createKidmagicTools 注入） */
 export interface ToolDeps {
-	db: DatabaseSync;
+	db: Db;
 	runtime: StoryRuntime;
+	/**
+	 * 章节配图队列（BullMQ）。缺省 / 入队失败时，start_book_generation
+	 * 自动降级为同步图生图，保证绘本始终能出片。
+	 */
+	imageQueue?: Queue<ChapterImageJobData> | null;
 }
 
 /** 构造纯文本工具结果（content 供模型阅读，details 留空） */

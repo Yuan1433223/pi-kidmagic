@@ -1,0 +1,14 @@
+{
+  "name": "Kidmagic 故事机",
+  "short_name": "Kidmagic",
+  "description": "孩子画素材、讲故事，AI 把孩子的想象变成专属绘本",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFF7EE",
+  "theme_color": "#FFF7EE",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

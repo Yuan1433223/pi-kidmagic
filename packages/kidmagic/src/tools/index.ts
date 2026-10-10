@@ -2,12 +2,14 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "typebox";
 import type { ToolDeps } from "./types.ts";
 import { createIngestAssetsTool } from "./ingest-assets.ts";
+import { createAnalyzeIngestBatchTool } from "./analyze-ingest-batch.ts";
 import { createMagicRenderTool } from "./magic-render.ts";
 import { createSaveStoryElementTool } from "./save-story-element.ts";
 import { createBuildCharacterCardTool } from "./build-character-card.ts";
 import { createCheckSkeletonTool } from "./check-skeleton.ts";
 import { createSaveBookTitleTool } from "./save-book-title.ts";
 import { createStartBookGenerationTool } from "./start-book-generation.ts";
+import { createGetWorldStateTool } from "./world-state.ts";
 
 /**
  * 创建 kidmagic 白名单工具集（agent 可调用），注入作品库与会话运行态。
@@ -17,22 +19,26 @@ import { createStartBookGenerationTool } from "./start-book-generation.ts";
 export function createKidmagicTools(deps: ToolDeps): AgentTool<TSchema, unknown>[] {
 	return [
 		createIngestAssetsTool(deps),
+		createAnalyzeIngestBatchTool(deps),
 		createMagicRenderTool(deps),
 		createSaveStoryElementTool(deps),
 		createBuildCharacterCardTool(deps),
 		createCheckSkeletonTool(deps),
 		createSaveBookTitleTool(deps),
 		createStartBookGenerationTool(deps),
+	createGetWorldStateTool(deps),
 	];
 }
 
 /** 白名单工具名（beforeToolCall 据此放行） */
 export const KIDMAGIC_TOOL_NAMES = [
 	"ingest_assets",
+	"analyze_ingest_batch",
 	"magic_render",
 	"save_story_element",
 	"build_character_card",
 	"check_skeleton",
 	"save_book_title",
 	"start_book_generation",
+	"get_world_state",
 ] as const;

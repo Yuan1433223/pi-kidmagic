@@ -14,6 +14,12 @@ export {
 	type CreateStoryAgentOptions,
 	type StoryAgentHandle,
 } from "./agent/story-agent.ts";
+export {
+	createQwenDedicatedProvider,
+	createQwenDedicatedModels,
+	QWEN_DEDICATED_PROVIDER_ID,
+	type QwenDedicatedConfig,
+} from "./agent/qwen-dedicated.ts";
 
 // 工具
 export { createKidmagicTools, KIDMAGIC_TOOL_NAMES } from "./tools/index.ts";

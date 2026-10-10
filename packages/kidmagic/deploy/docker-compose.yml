@@ -1,0 +1,60 @@
+# Kidmagic 容器化部署（标准示例，云上 Linux 使用）
+# 用法：
+#   cp .env.production.example .env.production   # 填好全部 key
+#   docker compose -f packages/kidmagic/deploy/docker-compose.yml --env-file .env.production up -d --build
+#
+# 说明：本地 Windows 因虚拟化问题无法跑容器，此文件在云服务器上验证。
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: kidmagic
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?需要在 .env.production 设置 PG_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kidmagic"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: ../..              # 相对 docker-compose.yml 的 monorepo 根
+      dockerfile: packages/kidmagic/deploy/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      KIDMAGIC_ENV: production
+      KIDMAGIC_JWT_SECRET: ${KIDMAGIC_JWT_SECRET:?需要在 .env.production 设置 KIDMAGIC_JWT_SECRET}
+      KIDMAGIC_CORS_ORIGIN: ${KIDMAGIC_CORS_ORIGIN:-*}
+      DATABASE_URL: postgres://postgres:${PG_PASSWORD}@postgres:5432/kidmagic
+      REDIS_URL: redis://redis:6379
+      QWEN_MODEL: ${QWEN_MODEL}
+      QWEN_BASE_URL: ${QWEN_BASE_URL}
+      QWEN_TOKEN_PLAN_CN_API_KEY: ${QWEN_TOKEN_PLAN_CN_API_KEY}
+      KIDMAGIC_PERSONA: ${KIDMAGIC_PERSONA:-A}
+    ports:
+      - "${PORT:-8787}:8787"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

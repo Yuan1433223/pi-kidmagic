@@ -1,0 +1,8 @@
+# 运行产物
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 本地密钥（根 .gitignore 已含 .env，此处兜底）
+.env

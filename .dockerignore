@@ -1,0 +1,13 @@
+# Kidmagic 部署镜像构建上下文排除（放在 monorepo 根，供 packages/kidmagic/deploy/Dockerfile 使用）
+# 只影响 docker build context，不触碰任何 pi 源码。
+node_modules
+**/node_modules
+**/dist
+**/.git
+**/.DS_Store
+*.log
+.artifacts
+packages/kidmagic/uploads
+packages/kidmagic/*.db
+packages/kidmagic/.env
+packages/kidmagic/test
